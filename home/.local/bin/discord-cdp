@@ -1,0 +1,165 @@
+#!/usr/bin/node
+import { writeFileSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+
+const PORT = process.env.DISCORD_CDP_PORT ?? "9285";
+const STREAM_OUTPUT = process.env.DISCORD_STREAM_OUTPUT ?? leftmostMonitor();
+
+function leftmostMonitor() {
+    const r = spawnSync("hyprctl", ["monitors", "-j"], { encoding: "utf8" });
+    try {
+        const mons = JSON.parse(r.stdout).filter(m => !m.disabled);
+        mons.sort((a, b) => a.x - b.x || a.y - b.y);
+        return mons[0]?.name ?? "";
+    } catch {
+        return "";
+    }
+}
+const CONNECT_MS = 2000;
+const REPLY_MS = 20000;
+const PICKER_FLAG = `${process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid()}`}/share-picker-next`;
+
+async function discordPage() {
+    let targets;
+    try {
+        targets = await (await fetch(`http://127.0.0.1:${PORT}/json`, { signal: AbortSignal.timeout(CONNECT_MS) })).json();
+    } catch (e) {
+        if (e?.name === "TimeoutError") throw new Error(`Discord debug port ${PORT} did not answer within ${CONNECT_MS} ms (restart Discord)`);
+        throw new Error(`Discord debug port ${PORT} is closed (was Discord started with --remote-debugging-port=${PORT}?)`);
+    }
+    const page = targets.find(t => t.type === "page" && /^https:\/\/([a-z]+\.)?discord\.com\//.test(t.url));
+    if (!page) throw new Error("no Discord page on the debug port");
+    return page.webSocketDebuggerUrl;
+}
+
+async function evaluate(fn, arg) {
+    const ws = new WebSocket(await discordPage());
+    const within = (ms, what, body) => new Promise((ok, fail) => {
+        const t = setTimeout(() => { ws.close(); fail(new Error(`${what} timed out after ${ms} ms`)); }, ms);
+        body(v => { clearTimeout(t); ok(v); }, e => { clearTimeout(t); ws.close(); fail(e); });
+    });
+    await within(CONNECT_MS, "CDP connection", (ok, fail) => { ws.onopen = ok; ws.onerror = () => fail(new Error("CDP connection failed")); });
+    const expression = `(${fn})(${JSON.stringify(arg ?? null)})`;
+    const reply = await within(REPLY_MS, "CDP reply", ok => {
+        ws.onmessage = m => { const d = JSON.parse(m.data); if (d.id === 1) ok(d); };
+        ws.send(JSON.stringify({ id: 1, method: "Runtime.evaluate",
+            params: { expression, awaitPromise: true, returnByValue: true, userGesture: true } }));
+    });
+    ws.close();
+    if (reply.error) throw new Error(reply.error.message);
+    if (reply.result.exceptionDetails) throw new Error(reply.result.exceptionDetails.exception?.description ?? "page exception");
+    return reply.result.result.value;
+}
+
+const pageHelpers = String.raw`
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const visible = el => !!el && el.getClientRects().length > 0;
+    const label = el => (el.getAttribute("aria-label") || el.innerText || "").trim();
+    const find = (patterns, root = document) => {
+        for (const p of patterns) {
+            const re = new RegExp(p, "i");
+            const hit = [...root.querySelectorAll('button, [role="button"], [role="menuitem"], [role="switch"], [role="tab"], [role="radio"]')]
+                .find(el => visible(el) && re.test(label(el)));
+            if (hit) return hit;
+        }
+        return null;
+    };
+    const waitFor = async (patterns, ms = 4000, root) => {
+        for (const end = Date.now() + ms; Date.now() < end; await sleep(100)) {
+            const el = find(patterns, root);
+            if (el) return el;
+        }
+        return null;
+    };
+    const tooltipOf = async el => {
+        for (const t of ["pointerover", "pointerenter", "mouseover", "mouseenter"]) el.dispatchEvent(new MouseEvent(t, { bubbles: true }));
+        await sleep(300);
+        const tip = document.querySelector('[role="tooltip"]')?.innerText.trim() ?? "";
+        for (const t of ["pointerout", "pointerleave", "mouseout", "mouseleave"]) el.dispatchEvent(new MouseEvent(t, { bubbles: true }));
+        return tip;
+    };
+    const voicePanelButton = async pattern => {
+        const soundboard = document.querySelector('[aria-label="Open Soundboard"]');
+        if (!soundboard) return null;
+        const re = new RegExp(pattern, "i");
+        for (const b of soundboard.parentElement.parentElement.querySelectorAll("button")) {
+            if (re.test(label(b)) || re.test(await tooltipOf(b))) return b;
+        }
+        return null;
+    };
+`;
+
+function toggleSwitch(name, on, off) {
+    return evaluate(new Function("arg", `return (async () => { ${pageHelpers}
+        const re = new RegExp("^(un)?" + arg.name + "$", "i");
+        const sw = [...document.querySelectorAll('button[role="switch"]')].find(b => re.test(b.getAttribute("aria-label") ?? ""));
+        if (!sw) throw new Error("no " + arg.name + " switch in Discord");
+        const before = sw.getAttribute("aria-checked");
+        sw.click();
+        for (let i = 0; i < 20 && sw.getAttribute("aria-checked") === before; i++) await sleep(50);
+        return sw.getAttribute("aria-checked") === "true" ? arg.on : arg.off;
+    })();`), { name, on, off });
+}
+
+const actions = {
+    async probe() {
+        return evaluate(new Function("arg", `return (async () => { ${pageHelpers}
+            return [...document.querySelectorAll('button, [role="button"], [role="switch"], [role="tab"]')]
+                .filter(visible).map(el => label(el)).filter(Boolean)
+                .filter((v, i, a) => a.indexOf(v) === i);
+        })();`));
+    },
+
+    mute: () => toggleSwitch("mute", "muted", "unmuted"),
+    deafen: () => toggleSwitch("deafen", "deafened", "undeafened"),
+
+    async stream() {
+        writeFileSync(PICKER_FLAG, STREAM_OUTPUT);
+        return evaluate(new Function("arg", `return (async () => { ${pageHelpers}
+            const stop = document.querySelector('[aria-label="Stop Streaming"]');
+            if (stop) { stop.click(); return "stopped"; }
+            const share = await voicePanelButton("^share your screen$");
+            if (!share) return "not in a voice channel";
+            share.click();
+            const dialog = await (async () => {
+                for (let i = 0; i < 40; i++, await sleep(100)) {
+                    const d = document.querySelector('[role="dialog"]');
+                    if (d) return d;
+                }
+                return null;
+            })();
+            if (!dialog) return "share dialog did not open";
+            const entire = await waitFor(["^share entire screen$"], 3000, dialog);
+            if (!entire) return "no 'Share entire screen' option";
+            entire.click();
+            const select = await waitFor(["^make selection$", "^go live$"], 3000, dialog);
+            if (!select) return "no 'Make Selection' button";
+            select.click();
+            for (let i = 0; i < 100; i++, await sleep(100)) {
+                if (document.querySelector('[aria-label="Stop Streaming"]')) return "started";
+            }
+            return "share requested";
+        })();`));
+    },
+};
+
+function notify(body) {
+    spawnSync("notify-send", ["-a", "Discord", "-i", "discord", "Discord stream", body]);
+}
+
+const name = process.argv[2];
+if (!actions[name]) {
+    console.error(`usage: discord-cdp <${Object.keys(actions).join("|")}>`);
+    process.exit(2);
+}
+try {
+    const out = await actions[name]();
+    console.log(typeof out === "string" ? out : JSON.stringify(out, null, 1));
+    if (name === "stream" && out !== "started" && out !== "share requested") rmSync(PICKER_FLAG, { force: true });
+    if (name === "stream" && out !== "started" && out !== "stopped") notify(out);
+} catch (e) {
+    rmSync(PICKER_FLAG, { force: true });
+    console.error(`discord-cdp: ${e.message}`);
+    if (name === "stream") notify(e.message);
+    process.exit(1);
+}

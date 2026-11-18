@@ -1,0 +1,6 @@
+[Unit]
+Description=Notify when calendar sync fails
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/calendar-sync-alert

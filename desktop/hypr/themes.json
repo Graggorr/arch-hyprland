@@ -1,0 +1,11 @@
+[
+  {"id": "mono",   "name": "Mono",   "seed": "#ffffff", "scheme": "scheme-monochrome"},
+  {"id": "red",    "name": "Red",    "seed": "#e5484d", "scheme": "scheme-tonal-spot", "hue": [345, 15]},
+  {"id": "orange", "name": "Orange", "seed": "#f76b15", "scheme": "scheme-tonal-spot", "hue": [15, 40]},
+  {"id": "yellow", "name": "Yellow", "seed": "#f5c518", "scheme": "scheme-tonal-spot", "hue": [40, 68]},
+  {"id": "green",  "name": "Green",  "seed": "#46a758", "scheme": "scheme-tonal-spot", "hue": [68, 160]},
+  {"id": "teal",   "name": "Teal",   "seed": "#12a594", "scheme": "scheme-tonal-spot", "hue": [160, 195]},
+  {"id": "blue",   "name": "Blue",   "seed": "#3e7bfa", "scheme": "scheme-tonal-spot", "hue": [195, 250]},
+  {"id": "purple", "name": "Purple", "seed": "#8e4ec6", "scheme": "scheme-tonal-spot", "hue": [250, 290]},
+  {"id": "pink",   "name": "Pink",   "seed": "#e93d82", "scheme": "scheme-tonal-spot", "hue": [290, 345]}
+]

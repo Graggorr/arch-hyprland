@@ -1,0 +1,16 @@
+working-directory = home
+command = fish
+
+font-family = "monospace"
+font-style = "Regular"
+font-family-bold = "Bold"
+font-family-italic = "Italic"
+font-size = 11.25
+
+background-opacity = 0.5
+
+copy-on-select = false
+keybind = ctrl+c=copy_to_clipboard
+
+# Colours follow the theme switcher (rendered by hypr/scripts/wallpapers.py).
+config-file = ?colors

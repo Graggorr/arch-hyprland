@@ -1,0 +1,24 @@
+keybind = ctrl+key_c=copy_to_clipboard
+keybind = ctrl+key_v=paste_from_clipboard
+keybind = ctrl+key_n=prompt_tab_title
+keybind = ctrl+key_t=new_tab
+keybind = ctrl+key_w=close_tab:this
+keybind = ctrl+key_q=quit
+keybind = ctrl+key_f=start_search
+keybind = ctrl+key_j=write_screen_file:paste,plain
+keybind = ctrl+key_a=select_all
+keybind = ctrl+key_i=inspector:toggle
+keybind = ctrl+key_p=toggle_command_palette
+keybind = ctrl+enter=toggle_split_zoom
+keybind = ctrl+,=reload_config
+keybind = ctrl+alt+arrow_left=previous_tab
+keybind = ctrl+alt+arrow_right=next_tab
+keybind = ctrl+tab=unbind
+keybind = ctrl+shift+tab=unbind
+keybind = ctrl+page_up=unbind
+keybind = ctrl+page_down=unbind
+keybind = ctrl+shift+page_up=unbind
+keybind = ctrl+shift+page_down=unbind
+
+# theme = Ayu Mirage
+theme = Dracula

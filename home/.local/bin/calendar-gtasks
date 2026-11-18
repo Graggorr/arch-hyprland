@@ -1,0 +1,246 @@
+#!/usr/bin/env python3
+"""Google Tasks bridge.
+
+Tasks are not part of CalDAV, so vdirsyncer cannot carry them. This holds
+its own OAuth token on the tasks scope, reusing the client id/secret that
+calendar-setup already put in the login keyring.
+
+Both Google accounts are supported; each gets its own token file, so a
+work account that refuses consent does not break the personal one.
+"""
+import datetime as dt
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+STATE = Path(os.environ.get("CAL_STATE", Path.home() / ".local/state/vdirsyncer")).expanduser()
+ACCOUNTS = ["personal"]
+SCOPES = ["https://www.googleapis.com/auth/tasks"]
+KEYRING_SERVICE = "vdirsyncer-google"
+
+
+def keyring(key):
+    try:
+        p = subprocess.run(
+            ["secret-tool", "lookup", "service", KEYRING_SERVICE, "key", key],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    return p.stdout.strip() if p.returncode == 0 else ""
+
+
+def token_path(account):
+    return STATE / f"google-{account}.tasks.json"
+
+
+def load_creds(account):
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+
+    p = token_path(account)
+    if not p.exists():
+        return None
+    try:
+        creds = Credentials.from_authorized_user_file(str(p), SCOPES)
+    except Exception:
+        return None
+    if creds and creds.expired and creds.refresh_token:
+        try:
+            creds.refresh(Request())
+            p.write_text(creds.to_json())
+            p.chmod(0o600)
+        except Exception:
+            return None
+    return creds if creds and creds.valid else None
+
+
+def service(account):
+    from googleapiclient.discovery import build
+
+    creds = load_creds(account)
+    if not creds:
+        return None
+    return build("tasks", "v1", credentials=creds, cache_discovery=False)
+
+
+def cmd_auth():
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
+    cid, csec = keyring("client_id"), keyring("client_secret")
+    if not cid or not csec:
+        print("Google client id/secret not in the keyring — run calendar-setup creds first.",
+              file=sys.stderr)
+        return 1
+
+    cfg = {"installed": {
+        "client_id": cid,
+        "client_secret": csec,
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "redirect_uris": ["http://localhost"],
+    }}
+
+    STATE.mkdir(parents=True, exist_ok=True)
+    failed = 0
+    hints = {"personal": "sign in with your PERSONAL @gmail.com"}
+    for account in ACCOUNTS:
+        print(f"\n  Google Tasks — {account} account")
+        print(f"  (browser will open — {hints.get(account, account)})")
+        ans = input("  Authorise this account? [Y/n] ").strip().lower()
+        if ans == "n":
+            print("  skipped")
+            continue
+        try:
+            flow = InstalledAppFlow.from_client_config(cfg, SCOPES)
+            creds = flow.run_local_server(port=0, open_browser=True)
+        except Exception as e:
+            print(f"  failed: {e}", file=sys.stderr)
+            failed = 1
+            continue
+        p = token_path(account)
+        p.write_text(creds.to_json())
+        p.chmod(0o600)
+        print(f"  token saved to {p}")
+    return failed
+
+
+def fetch(account):
+    svc = service(account)
+    if not svc:
+        return []
+    out = []
+    lists = svc.tasklists().list(maxResults=100).execute().get("items", [])
+    for tl in lists:
+        page = None
+        while True:
+            resp = svc.tasks().list(
+                tasklist=tl["id"], showCompleted=True, showHidden=False,
+                maxResults=100, pageToken=page,
+            ).execute()
+            for t in resp.get("items", []):
+                due = t.get("due")
+                # Google returns due as an RFC3339 timestamp but the time part
+                # is always midnight UTC; only the date half is meaningful.
+                date = due[:10] if due else ""
+                out.append({
+                    "id": t.get("id", ""),
+                    "title": t.get("title", ""),
+                    "notes": t.get("notes", ""),
+                    "due": date,
+                    "time": "",
+                    "completed": t.get("status") == "completed",
+                    "list": tl.get("title", "Tasks"),
+                    "listId": tl.get("id", ""),
+                    "account": account,
+                })
+            page = resp.get("nextPageToken")
+            if not page:
+                break
+    return out
+
+
+CACHE = Path(os.environ.get("CAL_GTASKS_CACHE", "/tmp/qs-gtasks-cache.json"))
+CACHE_TTL = int(os.environ.get("CAL_GTASKS_TTL", "600"))
+
+
+def fetch_all(force=False):
+    """All tasks from all authorised accounts, served from a short cache.
+
+    The Tasks API costs ~1s of round-trips per refresh; a day click in the
+    bar must not pay that, so reads hit the cache and the background sync
+    timer refreshes it. A failed refresh serves the stale cache rather than
+    dropping tasks from the agenda.
+    """
+    live = [a for a in ACCOUNTS if token_path(a).exists()]
+    if not live:
+        raise LookupError("not authorised")
+
+    if not force and CACHE.exists():
+        import time
+        if time.time() - CACHE.stat().st_mtime < CACHE_TTL:
+            try:
+                return json.loads(CACHE.read_text())
+            except (OSError, json.JSONDecodeError):
+                pass
+
+    try:
+        out = []
+        for account in live:
+            out += fetch(account)
+    except Exception:
+        if CACHE.exists():
+            try:
+                return json.loads(CACHE.read_text())
+            except (OSError, json.JSONDecodeError):
+                pass
+        raise
+
+    tmp = CACHE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(out))
+    tmp.replace(CACHE)
+    return out
+
+
+def cmd_range(start, end):
+    lo, hi = dt.date.fromisoformat(start), dt.date.fromisoformat(end)
+    out = []
+    for t in fetch_all():
+        if not t["due"]:
+            continue
+        try:
+            d = dt.date.fromisoformat(t["due"])
+        except ValueError:
+            continue
+        if lo <= d <= hi:
+            out.append(t)
+    return out
+
+
+def cmd_done(account, tasklist, task_id):
+    svc = service(account)
+    if not svc:
+        print(f"{account} not authorised", file=sys.stderr)
+        return 1
+    svc.tasks().patch(tasklist=tasklist, task=task_id, body={"status": "completed"}).execute()
+    return 0
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv:
+        print("usage: calendar-gtasks auth | range <ISO> <ISO> | refresh | done <account> <listId> <taskId>",
+              file=sys.stderr)
+        return 2
+    try:
+        if argv[0] == "auth":
+            return cmd_auth()
+        if argv[0] == "range":
+            json.dump(cmd_range(argv[1], argv[2]), sys.stdout, ensure_ascii=False)
+            print()
+            return 0
+        if argv[0] == "refresh":
+            fetch_all(force=True)
+            return 0
+        if argv[0] == "done":
+            rc = cmd_done(argv[1], argv[2], argv[3])
+            if rc == 0:
+                try:
+                    fetch_all(force=True)
+                except Exception:
+                    pass
+            return rc
+    except Exception as e:
+        # The agenda bridge parses stdout, so failures must stay quiet there.
+        print(str(e), file=sys.stderr)
+        if argv[0] == "range":
+            print("[]")
+        return 1
+    print(f"unknown command: {argv[0]}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

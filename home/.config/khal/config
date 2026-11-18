@@ -1,0 +1,30 @@
+[calendars]
+
+[[google-personal]]
+path = ~/.local/share/calendars/google-personal/*
+type = discover
+color = light green
+
+
+[[icloud]]
+path = ~/.local/share/calendars/icloud/*
+type = discover
+color = light magenta
+
+[[subscriptions]]
+path = ~/.local/share/calendars/subscriptions/*
+type = discover
+color = auto
+readonly = True
+
+[locale]
+timeformat = %H:%M
+dateformat = %Y-%m-%d
+longdateformat = %Y-%m-%d
+datetimeformat = %Y-%m-%d %H:%M
+longdatetimeformat = %Y-%m-%d %H:%M
+firstweekday = 0
+
+[default]
+highlight_event_days = True
+timedelta = 1d

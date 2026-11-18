@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -u
+
+RUNDIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+command -v nvim >/dev/null 2>&1 || exit 0
+
+shopt -s nullglob
+for sock in "$RUNDIR"/nvim.*.0 "$RUNDIR"/nvim.* /tmp/nvim.$USER/*/nvim.*.0; do
+    [ -S "$sock" ] || continue
+    timeout 2 nvim --server "$sock" --remote-expr "execute('ThemeReload')" >/dev/null 2>&1 || true
+done
+exit 0

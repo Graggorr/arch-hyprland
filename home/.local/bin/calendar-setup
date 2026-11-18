@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GOOGLE_SVC="vdirsyncer-google"
+ICLOUD_SVC="vdirsyncer-icloud"
+
+c_head() { printf '\n\033[1;36m%s\033[0m\n' "$*"; }
+c_ok()   { printf '\033[1;32m  ✓\033[0m %s\n' "$*"; }
+c_warn() { printf '\033[1;33m  !\033[0m %s\n' "$*"; }
+c_err()  { printf '\033[1;31m  ✗\033[0m %s\n' "$*"; }
+
+have_secret() {
+    secret-tool lookup service "$1" key "$2" >/dev/null 2>&1
+}
+
+put_secret() {
+    local svc="$1" key="$2" label="$3" value="$4"
+    printf '%s' "$value" | secret-tool store --label="$label" service "$svc" key "$key"
+}
+
+# ask_secret <svc> <key> <label> <prompt> <hidden> <validator fn or ->
+# The validator gets the value and prints a complaint to stdout when it
+# dislikes it; an empty complaint means the value is accepted.
+ask_secret() {
+    local svc="$1" key="$2" label="$3" prompt="$4" hidden="$5" validator="${6:--}" value="" complaint=""
+    if have_secret "$svc" "$key"; then
+        read -rp "  $prompt is already stored. Replace it? [y/N] " ans
+        [[ "${ans,,}" == "y" ]] || { c_ok "kept existing $prompt"; return; }
+    fi
+    while :; do
+        if [ "$hidden" = "1" ]; then
+            read -rsp "  $prompt: " value; echo
+        else
+            read -rp "  $prompt: " value
+        fi
+        [ -z "$value" ] && { c_warn "cannot be empty"; continue; }
+        if [ "$validator" != "-" ]; then
+            complaint=$("$validator" "$value")
+            if [ -n "$complaint" ]; then
+                c_warn "$complaint"
+                read -rp "  Use this value anyway? [y/N] " ans
+                [[ "${ans,,}" == "y" ]] || continue
+            fi
+        fi
+        break
+    done
+    put_secret "$svc" "$key" "$label" "$value"
+    c_ok "$prompt stored in the login keyring"
+}
+
+v_client_id() {
+    case "$1" in
+        *@*) printf 'That looks like an EMAIL ADDRESS. The Client ID is a code from Google Cloud Console ending in .apps.googleusercontent.com' ;;
+        *.apps.googleusercontent.com) ;;
+        *)  printf 'Expected something ending in .apps.googleusercontent.com' ;;
+    esac
+}
+
+v_client_secret() {
+    case "$1" in
+        GOCSPX-*) ;;
+        *) printf 'Expected a code starting with GOCSPX- (this is NOT your Google password)' ;;
+    esac
+}
+
+v_apple_id() {
+    case "$1" in
+        *@*) ;;
+        *) printf 'Expected an email address (the one you sign in to iCloud with)' ;;
+    esac
+}
+
+v_app_password() {
+    if [[ "$1" =~ ^[a-z]{4}-[a-z]{4}-[a-z]{4}-[a-z]{4}$ ]]; then
+        :
+    else
+        printf 'Expected the xxxx-xxxx-xxxx-xxxx format from account.apple.com (this is NOT your Apple ID password)'
+    fi
+}
+
+step_google_creds() {
+    c_head "1. Google — one OAuth app for BOTH Google accounts (personal + work)"
+    cat <<'TXT'
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  You will NOT enter any Google email or password here.          │
+  │  You create a small "app" in Google's console once, and paste   │
+  │  the app's TWO CODES below. Both your accounts will later log   │
+  │  in THROUGH this app in the browser (step: discover).           │
+  └─────────────────────────────────────────────────────────────────┘
+
+  Do this in the browser, signed in as your PERSONAL Gmail
+  (a work-owned project can lock out personal accounts):
+
+    a. https://console.cloud.google.com → create a project
+       (any name, e.g. "calendar-sync").
+    b. APIs & Services → Library → enable ALL THREE:
+         · CalDAV API          (this is what vdirsyncer actually speaks —
+                                "Google Calendar API" alone is NOT enough)
+         · Google Calendar API
+         · Google Tasks API
+    c. APIs & Services → OAuth consent screen:
+         · Audience/User type: External
+         · Test users: add your @gmail.com address
+    d. APIs & Services → Credentials → Create credentials →
+       OAuth client ID → Application type: "Desktop app".
+    e. A dialog shows the two codes you paste below.
+
+  What they look like:
+    Client ID:      123456789012-ab3xy...q7z.apps.googleusercontent.com
+    Client secret:  GOCSPX-aB3xY9...
+
+TXT
+    ask_secret "$GOOGLE_SVC" client_id     "Google OAuth client id"     "Client ID (ends in .apps.googleusercontent.com)" 0 v_client_id
+    ask_secret "$GOOGLE_SVC" client_secret "Google OAuth client secret" "Client secret (starts with GOCSPX-)"             1 v_client_secret
+}
+
+step_icloud_creds() {
+    c_head "2. iCloud — your Apple ID + an app-specific password"
+    cat <<'TXT'
+  Two things here, both belong to your PERSONAL Apple account:
+
+    · Apple ID       — the email you sign in to iCloud with.
+    · App-specific password — NOT your Apple ID password. Apple makes
+      a separate throwaway password for third-party apps:
+        https://account.apple.com → Sign-In and Security →
+        App-Specific Passwords → + (name it e.g. "vdirsyncer")
+      It looks like:  abcd-efgh-ijkl-mnop
+
+TXT
+    ask_secret "$ICLOUD_SVC" username "iCloud Apple ID"              "Apple ID email"                          0 v_apple_id
+    ask_secret "$ICLOUD_SVC" password "iCloud app-specific password" "App-specific password (xxxx-xxxx-xxxx-xxxx)" 1 v_app_password
+}
+
+discover_pair() {
+    local pair="$1" label="$2" hint="$3"
+    printf '\n  ── %s ──\n' "$label"
+    if [ -n "$hint" ]; then
+        printf '  %s\n' "$hint"
+        read -rp "  Press Enter to continue… " _
+    fi
+    if vdirsyncer discover "$pair"; then
+        c_ok "$label discovered"
+        return 0
+    fi
+    c_err "$label failed to discover"
+    return 1
+}
+
+step_discover() {
+    c_head "3. Connect each account (finds your calendars)"
+    cat <<'TXT'
+  The two Google pairs each open a BROWSER window. The window is a
+  normal Google login — WHICH account you pick there decides which
+  account gets connected, so:
+
+    · google_personal  →  sign in with your @gmail.com
+
+  iCloud does not open a browser; it uses the stored app password.
+
+TXT
+    local failed=0
+    discover_pair google_personal  "Google personal" \
+        "Browser will open → choose your PERSONAL @gmail.com account." || failed=1
+    discover_pair icloud           "iCloud calendars"  "" || failed=1
+    discover_pair icloud_reminders "iCloud Reminders"  "" || failed=1
+    return $failed
+}
+
+step_tasks() {
+    c_head "4. Google Tasks (separate consent, same rule: match the account)"
+    if [ -x "$HOME/.local/bin/calendar-gtasks" ]; then
+        "$HOME/.local/bin/calendar-gtasks" auth || c_warn "Google Tasks auth skipped"
+    else
+        c_warn "calendar-gtasks not installed; skipping"
+    fi
+}
+
+step_sync() {
+    c_head "5. First sync"
+    if vdirsyncer sync; then
+        c_ok "sync complete"
+    else
+        c_err "sync failed"
+        return 1
+    fi
+}
+
+step_summary() {
+    c_head "Collections now present"
+    local n=0
+    for d in "$HOME"/.local/share/calendars/*/*/; do
+        [ -d "$d" ] || continue
+        local name count
+        name=$(basename "$(dirname "$d")")/$(basename "$d")
+        count=$(find "$d" -name '*.ics' | wc -l)
+        printf '  %-58s %4s items\n' "$name" "$count"
+        n=$((n + 1))
+    done
+    [ "$n" -eq 0 ] && c_warn "no collections yet"
+    printf '\n'
+    c_ok "Enable background sync: systemctl --user enable --now vdirsyncer.timer"
+    c_ok "Subscribe to a public feed (F1, sports, holidays): calendar-subscribe add f1"
+}
+
+main() {
+    command -v secret-tool >/dev/null || { c_err "secret-tool missing (install libsecret)"; exit 1; }
+    command -v vdirsyncer  >/dev/null || { c_err "vdirsyncer missing"; exit 1; }
+
+    case "${1:-all}" in
+        creds)    step_google_creds; step_icloud_creds ;;
+        google)   step_google_creds ;;
+        icloud)   step_icloud_creds ;;
+        discover) step_discover ;;
+        tasks)    step_tasks ;;
+        sync)     step_sync; step_summary ;;
+        all)
+            step_google_creds
+            step_icloud_creds
+            step_discover || c_warn "continuing despite discovery failures"
+            step_tasks
+            step_sync || true
+            step_summary
+            ;;
+        *)
+            printf 'usage: calendar-setup [all|creds|google|icloud|discover|tasks|sync]\n'
+            exit 2
+            ;;
+    esac
+}
+
+main "$@"

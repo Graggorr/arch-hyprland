@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+import configparser
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+HOME = os.path.expanduser("~")
+CONFIG = os.path.join(HOME, ".config/hypr/icons.json")
+THEME_STATE = os.path.join(HOME, ".config/hypr/theme.json")
+SYSTEM_ICONS = "/usr/share/icons"
+USER_ICONS = os.path.join(HOME, ".local/share/icons")
+BUILD_ROOT = "/data/icons" if os.access("/data", os.W_OK) else USER_ICONS
+GTK_INI = [
+    os.path.join(HOME, ".config/gtk-3.0/settings.ini"),
+    os.path.join(HOME, ".config/gtk-4.0/settings.ini"),
+]
+GTKRC2 = os.path.join(HOME, ".gtkrc-2.0")
+QTCT = [
+    os.path.join(HOME, ".config/qt6ct/qt6ct.conf"),
+    os.path.join(HOME, ".config/qt5ct/qt5ct.conf"),
+]
+DIR_KEYS = ("Size", "Scale", "Context", "Type", "MinSize", "MaxSize", "Threshold")
+
+
+def load_config():
+    with open(CONFIG) as f:
+        return json.load(f)
+
+
+def system_theme():
+    try:
+        with open(THEME_STATE) as f:
+            return json.load(f).get("system", "")
+    except (OSError, ValueError):
+        return ""
+
+
+def variant_dir(cfg, theme):
+    color = cfg["variants"].get(theme, "")
+    pack = cfg["pack"]
+    candidates = [f"{pack}-{color}-dark"] if color else []
+    candidates.append(f"{pack}-dark")
+    for name in candidates:
+        path = os.path.join(SYSTEM_ICONS, name)
+        if os.path.isfile(os.path.join(path, "index.theme")):
+            return path
+    return None
+
+
+def read_index(path):
+    cp = configparser.ConfigParser(interpolation=None, strict=False)
+    cp.optionxform = str
+    cp.read(os.path.join(path, "index.theme"))
+    return cp
+
+
+def split_list(value):
+    return [v.strip() for v in (value or "").split(",") if v.strip()]
+
+
+def tokens(name):
+    return [t for t in re.split(r"[-_.\s]+", name.lower()) if t]
+
+
+def is_themed_app(themed, name):
+    base = name.lower()
+    if base.endswith("-symbolic"):
+        base = base[:-len("-symbolic")]
+    return any(p.fullmatch(base) for p in themed)
+
+
+def is_brand(brands, name):
+    return any(t in brands for t in tokens(name))
+
+
+def keep(context, name, themed, brands):
+    stem = os.path.splitext(name)[0]
+    if context == "Applications":
+        return is_themed_app(themed, stem)
+    if context in ("Status", "Panel", "Stock"):
+        return not is_brand(brands, stem)
+    return True
+
+
+def build(cfg, src, dest):
+    themed = [re.compile(p, re.I) for p in cfg["themed_apps"]]
+    brands = {b.lower() for b in cfg["brands"]}
+    index = read_index(src)
+    info = index["Icon Theme"]
+    dirs = split_list(info.get("Directories")) + split_list(info.get("ScaledDirectories"))
+
+    os.makedirs(dest)
+    kept_dirs = []
+    sections = []
+    dropped = 0
+    for d in dirs:
+        if not index.has_section(d):
+            continue
+        sec = index[d]
+        context = sec.get("Context", "")
+        real = os.path.realpath(os.path.join(src, d))
+        if not os.path.isdir(real):
+            continue
+        out = os.path.join(dest, d)
+        n = 0
+        for name in sorted(os.listdir(real)):
+            target = os.path.realpath(os.path.join(real, name))
+            if not os.path.isfile(target):
+                continue
+            if not keep(context, name, themed, brands):
+                dropped += 1
+                continue
+            if n == 0:
+                os.makedirs(out, exist_ok=True)
+            os.symlink(target, os.path.join(out, name))
+            n += 1
+        if n == 0:
+            continue
+        kept_dirs.append(d)
+        lines = [f"[{d}]"] + [f"{k}={sec[k]}" for k in DIR_KEYS if k in sec]
+        sections.append("\n".join(lines))
+
+    head = [
+        "[Icon Theme]",
+        f"Name={cfg['name']}",
+        f"Comment={os.path.basename(src)} for system icons; apps keep their own icons",
+        f"Inherits={','.join(cfg['inherits'])}",
+        f"Directories={','.join(kept_dirs)}",
+    ]
+    with open(os.path.join(dest, "index.theme"), "w") as f:
+        f.write("\n".join(head) + "\n\n" + "\n\n".join(sections) + "\n")
+    subprocess.run(["gtk-update-icon-cache", "-f", "-q", "-t", dest], check=False)
+    return len(kept_dirs), dropped
+
+
+def swap_in(stage, final):
+    old = final + ".old"
+    shutil.rmtree(old, ignore_errors=True)
+    if os.path.lexists(final):
+        os.rename(final, old)
+    os.rename(stage, final)
+    shutil.rmtree(old, ignore_errors=True)
+
+
+def set_line(path, pattern, line):
+    try:
+        text = open(path).read()
+    except OSError:
+        return False
+    new, n = re.subn(pattern, line, text, flags=re.M)
+    if n == 0 or new == text:
+        return False
+    with open(path, "w") as f:
+        f.write(new)
+    return True
+
+
+def apply_settings(name):
+    subprocess.run(["gsettings", "set", "org.gnome.desktop.interface", "icon-theme", name],
+                   check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for path in GTK_INI:
+        set_line(path, r"^gtk-icon-theme-name=.*$", f"gtk-icon-theme-name={name}")
+    set_line(GTKRC2, r'^gtk-icon-theme-name=.*$', f'gtk-icon-theme-name="{name}"')
+    for path in QTCT:
+        set_line(path, r"^icon_theme=.*$", f"icon_theme={name}")
+
+
+def main():
+    cfg = load_config()
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    theme = args[0] if args else system_theme()
+    src = variant_dir(cfg, theme)
+    if src is None:
+        print(f"no {cfg['pack']} variant installed under {SYSTEM_ICONS}", file=sys.stderr)
+        return 1
+    final = os.path.join(BUILD_ROOT, cfg["name"])
+    link = os.path.join(USER_ICONS, cfg["name"])
+    stamp = os.path.join(final, ".source")
+    try:
+        current = open(stamp).read().strip()
+    except OSError:
+        current = ""
+    signature = "|".join([src, str(os.path.getmtime(CONFIG)),
+                          str(os.path.getmtime(os.path.join(src, "index.theme")))])
+    if current == signature and os.path.realpath(link) == final and "--force" not in sys.argv:
+        apply_settings(cfg["name"])
+        print(f"{cfg['name']}: already built from {os.path.basename(src)}")
+        return 0
+
+    os.makedirs(BUILD_ROOT, exist_ok=True)
+    os.makedirs(USER_ICONS, exist_ok=True)
+    stage = final + ".new"
+    shutil.rmtree(stage, ignore_errors=True)
+    ndirs, dropped = build(cfg, src, stage)
+    with open(os.path.join(stage, ".source"), "w") as f:
+        f.write(signature + "\n")
+    swap_in(stage, final)
+    if os.path.realpath(link) != final:
+        if os.path.isdir(link) and not os.path.islink(link):
+            shutil.rmtree(link)
+        elif os.path.lexists(link):
+            os.remove(link)
+        os.symlink(final, link)
+    apply_settings(cfg["name"])
+    print(f"{cfg['name']}: built from {os.path.basename(src)} "
+          f"({ndirs} dirs, {dropped} app/brand icons left to the apps)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

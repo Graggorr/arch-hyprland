@@ -1,0 +1,51 @@
+[general]
+status_path = "~/.local/state/vdirsyncer/status/"
+
+
+# ── Google, personal ────────────────────────────────────────────────
+[pair google_personal]
+a = "google_personal_local"
+b = "google_personal_remote"
+collections = ["from b"]
+conflict_resolution = "b wins"
+metadata = ["displayname", "color"]
+
+[storage google_personal_local]
+type = "filesystem"
+path = "~/.local/share/calendars/google-personal/"
+fileext = ".ics"
+
+[storage google_personal_remote]
+type = "google_calendar"
+token_file = "~/.local/state/vdirsyncer/google-personal.token"
+client_id.fetch = ["command", "secret-tool", "lookup", "service", "vdirsyncer-google", "key", "client_id"]
+client_secret.fetch = ["command", "secret-tool", "lookup", "service", "vdirsyncer-google", "key", "client_secret"]
+
+
+# ── iCloud calendars ────────────────────────────────────────────────
+[pair icloud]
+a = "icloud_local"
+b = "icloud_remote"
+collections = ["from b"]
+conflict_resolution = "b wins"
+metadata = ["displayname", "color"]
+
+[storage icloud_local]
+type = "filesystem"
+path = "~/.local/share/calendars/icloud/"
+fileext = ".ics"
+
+[storage icloud_remote]
+type = "caldav"
+url = "https://caldav.icloud.com/"
+item_types = ["VEVENT"]
+username.fetch = ["command", "secret-tool", "lookup", "service", "vdirsyncer-icloud", "key", "username"]
+password.fetch = ["command", "secret-tool", "lookup", "service", "vdirsyncer-icloud", "key", "password"]
+
+
+
+
+# >>> calendar-subscribe: generated block, edit with `calendar-subscribe` >>>
+
+
+# <<< calendar-subscribe <<<

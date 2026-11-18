@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+import os
+import sys
+
+HOME = os.path.expanduser("~")
+CSS_FILES = [
+    os.path.join(HOME, ".config/gtk-4.0/gtk.css"),
+    os.path.join(HOME, ".config/gtk-3.0/gtk.css"),
+]
+
+
+def main():
+    for path in CSS_FILES:
+        try:
+            os.utime(path, None)
+        except OSError:
+            pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

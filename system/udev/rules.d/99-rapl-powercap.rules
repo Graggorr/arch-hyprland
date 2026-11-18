@@ -1,0 +1,6 @@
+# Grant read access to Intel RAPL energy counters for the wheel group so the
+# bar's CPU widget (quickshell/scripts/cpu.sh) can report package power draw without root.
+# %S%p resolves to each powercap device's own sysfs dir, so this matches both
+# intel-rapl:0 (package) and intel-rapl:0:0 (core domain) as they are added.
+SUBSYSTEM=="powercap", ACTION=="add", RUN+="/usr/bin/chgrp wheel %S%p/energy_uj"
+SUBSYSTEM=="powercap", ACTION=="add", RUN+="/usr/bin/chmod g+r %S%p/energy_uj"

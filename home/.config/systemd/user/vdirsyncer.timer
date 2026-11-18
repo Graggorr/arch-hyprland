@@ -1,0 +1,10 @@
+[Unit]
+Description=Sync calendars every 10 minutes
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=10m
+RandomizedDelaySec=1m
+
+[Install]
+WantedBy=timers.target

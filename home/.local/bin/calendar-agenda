@@ -1,0 +1,621 @@
+#!/usr/bin/env python3
+"""Agenda bridge for the Quickshell dynamic island.
+
+Every source is optional. A source that is unconfigured, broken or slow
+degrades to an empty list and is reported in "sources", so the bar keeps
+rendering whatever else is available instead of going blank.
+"""
+import datetime as dt
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(os.environ.get("CAL_ROOT", Path.home() / ".local/share/calendars")).expanduser()
+KHAL_CONFIG = os.environ.get("CAL_KHAL_CONFIG")
+TODOMAN_CONFIG = os.environ.get("CAL_TODOMAN_CONFIG")
+GTASKS = Path(os.environ.get("CAL_GTASKS", Path.home() / ".local/bin/calendar-gtasks"))
+SUBS = Path(os.environ.get("CAL_SUBS", Path.home() / ".config/calendar-subscriptions.json"))
+TIMEOUT = float(os.environ.get("CAL_TIMEOUT", "15"))
+
+ACCOUNT_COLOR = {
+    "google-personal": "#34a853",
+    "icloud": "#e05299",
+    "icloud-reminders": "#f09300",
+    "subscriptions": "#8e44ad",
+}
+
+# Accounts that mirror a feed nobody can write back to (see calendar-subscribe).
+READONLY_ACCOUNTS = {"subscriptions"}
+DEFAULT_COLOR = "#8b9198"
+TASK_COLOR = "#fbbc04"
+
+# Google names each account's primary calendar after its own address.
+FRIENDLY = {
+}
+
+EVENT_FIELDS = [
+    "title", "start-time", "end-time", "start-date", "end-date", "all-day",
+    "location", "description", "calendar", "uid", "repeat-symbol",
+    "organizer", "url", "cancelled",
+]
+
+
+def run(cmd, env=None):
+    try:
+        p = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=TIMEOUT,
+            env={**os.environ, **(env or {})},
+        )
+    except FileNotFoundError:
+        return False, "", "not installed"
+    except subprocess.TimeoutExpired:
+        return False, "", "timed out"
+    if p.returncode != 0:
+        # todoman reports "no lists found" on stdout with a non-zero exit, so
+        # falling back to stdout is what turns that into a useful message.
+        msg = (p.stderr or "").strip() or (p.stdout or "").strip()
+        return False, p.stdout, msg.splitlines()[-1] if msg else "failed"
+    return True, p.stdout, ""
+
+
+def norm_color(raw):
+    raw = (raw or "").strip()
+    if not raw.startswith("#"):
+        return None
+    # CalDAV serves #RRGGBBAA; Qt wants the alpha first or not at all.
+    if len(raw) == 9:
+        raw = raw[:7]
+    return raw if len(raw) == 7 else None
+
+
+def read(p):
+    try:
+        return p.read_text().strip()
+    except OSError:
+        return ""
+
+
+def subscription_links():
+    """Per-feed “watch here” URL, keyed by collection dir.
+
+    Feeds like the F1 one carry no URL of their own on the events, so the link
+    is a property of the subscription (calendar-subscribe --link), not of the
+    item — one line in the registry rather than a rewrite of every .ics.
+    """
+    try:
+        data = json.loads(SUBS.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    out = {}
+    for s in data.get("subscriptions", []) if isinstance(data, dict) else []:
+        if s.get("slug") and s.get("link"):
+            out[s["slug"]] = {"link": s["link"], "label": s.get("linkLabel", "Open link")}
+    return out
+
+
+def collection_meta():
+    """Lookup for whatever khal calls a calendar.
+
+    Keyed by directory name *and* display name: with `type = discover` khal
+    reports the collection's displayname, while the directory name is the
+    calendar id. Directory names are unique so they win on collision.
+    """
+    meta, by_display = {}, {}
+    if not ROOT.is_dir():
+        return meta
+    links = subscription_links()
+    for acct in sorted(ROOT.iterdir()):
+        if not acct.is_dir():
+            continue
+        for coll in sorted(acct.iterdir()):
+            if not coll.is_dir():
+                continue
+            display = read(coll / "displayname") or coll.name
+            display = FRIENDLY.get(display, display)
+            entry = {
+                "display": display,
+                "color": norm_color(read(coll / "color")) or ACCOUNT_COLOR.get(acct.name, DEFAULT_COLOR),
+                "account": acct.name,
+                "collection": coll.name,
+                "link": links.get(coll.name, {}).get("link", ""),
+                "linkLabel": links.get(coll.name, {}).get("label", ""),
+            }
+            # setdefault everywhere: iCloud serves the SAME collection ids and
+            # displaynames for calendars and reminders, and accounts iterate
+            # sorted, so the events copy (icloud) must not be shadowed by the
+            # reminders copy (icloud-reminders).
+            meta.setdefault(coll.name, entry)
+            by_display.setdefault(display, entry)
+    for k, v in by_display.items():
+        meta.setdefault(k, v)
+    return meta
+
+
+def khal_cmd(*args):
+    cmd = ["khal"]
+    if KHAL_CONFIG:
+        cmd += ["-c", KHAL_CONFIG]
+    return cmd + list(args)
+
+
+def khal_range(start, end):
+    """One JSON array per day in the range, empty days included."""
+    args = ["list"]
+    for f in EVENT_FIELDS:
+        args += ["--json", f]
+    args += [start.isoformat(), end.isoformat()]
+    ok, out, err = run(khal_cmd(*args))
+    if not ok:
+        return None, err
+    days = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            days.append(json.loads(line))
+        except json.JSONDecodeError:
+            days.append([])
+    span = (end - start).days + 1
+    while len(days) < span:
+        days.append([])
+    return days[:span], ""
+
+
+def map_event(raw, meta):
+    cal = raw.get("calendar", "")
+    m = meta.get(cal, {})
+    allday = str(raw.get("all-day", "")).lower() == "true"
+    return {
+        "kind": "event",
+        "title": raw.get("title", "") or "(no title)",
+        "allday": allday,
+        "start": "" if allday else raw.get("start-time", ""),
+        "end": "" if allday else raw.get("end-time", ""),
+        "startDate": raw.get("start-date", ""),
+        "endDate": raw.get("end-date", ""),
+        "location": raw.get("location", ""),
+        "description": raw.get("description", ""),
+        "organizer": raw.get("organizer", ""),
+        "url": raw.get("url", ""),
+        "recurring": bool(raw.get("repeat-symbol", "").strip()),
+        "cancelled": bool(str(raw.get("cancelled", "")).strip()),
+        "calendar": m.get("display", cal),
+        "collection": m.get("collection", cal),
+        "color": m.get("color", DEFAULT_COLOR),
+        "link": m.get("link", ""),
+        "linkLabel": m.get("linkLabel", ""),
+        "uid": raw.get("uid", ""),
+    }
+
+
+def todos():
+    cmd = ["todo"]
+    env = {}
+    if TODOMAN_CONFIG:
+        env["TODOMAN_CONFIG"] = TODOMAN_CONFIG
+    cmd += ["--porcelain", "list", "--status", "ANY"]
+    ok, out, err = run(cmd, env)
+    if not ok:
+        if "No lists found" in (err or ""):
+            return None, "not synced yet"
+        return None, err
+    try:
+        return json.loads(out or "[]"), ""
+    except json.JSONDecodeError:
+        return None, "unreadable output"
+
+
+def map_todo(raw, overdue=False):
+    due = raw.get("due")
+    when = dt.datetime.fromtimestamp(due) if due else None
+    return {
+        "kind": "reminder",
+        "title": raw.get("summary", "") or "(no title)",
+        "allday": False,
+        "start": when.strftime("%H:%M") if when else "",
+        "end": "",
+        "startDate": when.date().isoformat() if when else "",
+        "location": raw.get("location", ""),
+        "description": raw.get("description", ""),
+        "completed": bool(raw.get("completed")),
+        "priority": raw.get("priority", 0) or 0,
+        "overdue": overdue,
+        "calendar": raw.get("list", "Reminders"),
+        "collection": raw.get("list", ""),
+        "color": norm_color(raw.get("list_colour")) or ACCOUNT_COLOR["icloud-reminders"],
+        "uid": str(raw.get("id", "")),
+    }
+
+
+def gtasks(start, end):
+    if not GTASKS.exists():
+        return None, "not installed"
+    ok, out, err = run([str(GTASKS), "range", start.isoformat(), end.isoformat()])
+    if not ok:
+        return None, err
+    try:
+        return json.loads(out or "[]"), ""
+    except json.JSONDecodeError:
+        return None, "unreadable output"
+
+
+def map_task(raw):
+    return {
+        "kind": "task",
+        "title": raw.get("title", "") or "(no title)",
+        "allday": not raw.get("time"),
+        "start": raw.get("time", ""),
+        "end": "",
+        "startDate": raw.get("due", ""),
+        "location": "",
+        "description": raw.get("notes", ""),
+        "completed": bool(raw.get("completed")),
+        "calendar": raw.get("list", "Tasks"),
+        "collection": raw.get("listId", ""),
+        "color": TASK_COLOR,
+        "uid": raw.get("id", ""),
+    }
+
+
+def sort_key(it):
+    return (0 if it["allday"] else 1, it.get("start") or "", it.get("title", ""))
+
+
+def gather(day_or_first, last=None):
+    """Run the three source queries concurrently.
+
+    khal, todoman and gtasks are independent processes; serially they cost
+    the sum of their startups (~2s worst case), which is what a date click
+    in the bar would feel. Concurrently it's just the slowest one.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_events = ex.submit(khal_range, day_or_first, last or day_or_first)
+        f_todos = ex.submit(todos)
+        f_tasks = ex.submit(gtasks, day_or_first, last or day_or_first)
+        return f_events.result(), f_todos.result(), f_tasks.result()
+
+
+def cmd_day(iso):
+    day = dt.date.fromisoformat(iso)
+    today = dt.date.today()
+    meta = collection_meta()
+    items, sources = [], {}
+
+    (days, err), (tl, terr), (gt, gerr) = gather(day)
+    if days is None:
+        sources["events"] = err or "failed"
+    else:
+        sources["events"] = "ok"
+        events = [map_event(e, meta) for e in (days[0] if days else [])]
+        # Viewing today, a meeting that already ended is noise — hide it.
+        # Only today: a past date is opened deliberately to look at history,
+        # and hiding there would blank the whole day. All-day items stay.
+        if day == today:
+            now = dt.datetime.now().strftime("%H:%M")
+            events = [e for e in events
+                      if e["allday"]
+                      or (e.get("endDate") or "") > iso  # runs past midnight
+                      or (e.get("end") or e.get("start") or "99:99") > now]
+        items += events
+
+    if tl is None:
+        sources["reminders"] = terr or "failed"
+    else:
+        sources["reminders"] = "ok"
+        for t in tl:
+            due = t.get("due")
+            d = dt.datetime.fromtimestamp(due).date() if due else None
+            if d == day:
+                items.append(map_todo(t))
+            elif day == today and d and d < today and not t.get("completed"):
+                items.append(map_todo(t, overdue=True))
+
+    if gt is None:
+        sources["tasks"] = gerr or "failed"
+    else:
+        sources["tasks"] = "ok"
+        items += [map_task(t) for t in gt]
+
+    items.sort(key=sort_key)
+    return {"date": iso, "items": items, "sources": sources}
+
+
+MONTH_CACHE_DIR = Path(os.environ.get("CAL_MONTH_CACHE", "/tmp/qs-calmonth"))
+
+
+def data_fingerprint():
+    """Changes whenever any calendar data changes on disk.
+
+    vdirsyncer writes items atomically (tmp + rename), so every add, change
+    or delete bumps its collection directory's mtime. The gtasks cache file
+    mtime covers the tasks side.
+    """
+    stamps = []
+    if ROOT.is_dir():
+        for acct in ROOT.iterdir():
+            if not acct.is_dir():
+                continue
+            for coll in acct.iterdir():
+                if coll.is_dir():
+                    stamps.append(int(coll.stat().st_mtime))
+    gcache = Path("/tmp/qs-gtasks-cache.json")
+    if gcache.exists():
+        stamps.append(int(gcache.stat().st_mtime))
+    return max(stamps) if stamps else 0
+
+
+def cmd_month(year, month):
+    # A month of khal recurrence expansion costs ~5s CPU with a large shared
+    # calendar, so results are cached against the data fingerprint — month
+    # navigation is instant until a sync actually changes something.
+    fp = data_fingerprint()
+    cache = MONTH_CACHE_DIR / f"{year:04d}-{month:02d}.json"
+    try:
+        cached = json.loads(cache.read_text())
+        if cached.get("fp") == fp:
+            del cached["fp"]
+            return cached
+    except (OSError, json.JSONDecodeError, KeyError):
+        pass
+
+    first = dt.date(year, month, 1)
+    last = dt.date(year + (month == 12), (month % 12) + 1, 1) - dt.timedelta(days=1)
+    meta = collection_meta()
+    days = {}
+
+    def bucket(iso):
+        return days.setdefault(iso, {"count": 0, "colors": []})
+
+    def add(iso, color):
+        b = bucket(iso)
+        b["count"] += 1
+        if color and color not in b["colors"]:
+            b["colors"].append(color)
+
+    sources = {}
+    (rows, err), (tl, terr), (gt, gerr) = gather(first, last)
+    if rows is None:
+        sources["events"] = err or "failed"
+    else:
+        sources["events"] = "ok"
+        for i, row in enumerate(rows):
+            iso = (first + dt.timedelta(days=i)).isoformat()
+            for e in row:
+                m = meta.get(e.get("calendar", ""), {})
+                add(iso, m.get("color", DEFAULT_COLOR))
+
+    if tl is None:
+        sources["reminders"] = terr or "failed"
+    else:
+        sources["reminders"] = "ok"
+        for t in tl:
+            due = t.get("due")
+            if not due or t.get("completed"):
+                continue
+            d = dt.datetime.fromtimestamp(due).date()
+            if first <= d <= last:
+                add(d.isoformat(), norm_color(t.get("list_colour")) or ACCOUNT_COLOR["icloud-reminders"])
+
+    if gt is None:
+        sources["tasks"] = gerr or "failed"
+    else:
+        sources["tasks"] = "ok"
+        for t in gt:
+            if t.get("due") and not t.get("completed"):
+                add(t["due"], TASK_COLOR)
+
+    out = {"year": year, "month": month, "days": days, "sources": sources}
+    # Only a fully healthy result is worth pinning to the fingerprint —
+    # caching a degraded one would freeze the failure until the next sync.
+    if all(v == "ok" for v in sources.values()):
+        try:
+            MONTH_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = cache.with_suffix(".tmp")
+            tmp.write_text(json.dumps({**out, "fp": fp}))
+            tmp.replace(cache)
+        except OSError:
+            pass
+    return out
+
+
+def cmd_calendars():
+    """Event-capable calendars only — the composer's picker.
+
+    The icloud-reminders account is the same set of iCloud collections seen
+    through their VTODO side; offering it here would just duplicate every
+    iCloud calendar in the picker. Subscribed feeds are read-only, so an event
+    created in one would be reverted by the next sync.
+    """
+    seen = {}
+    for v in collection_meta().values():
+        if v["account"] == "icloud-reminders" or v["account"] in READONLY_ACCOUNTS:
+            continue
+        seen[(v["account"], v["collection"])] = v
+    rows = sorted(seen.values(), key=lambda v: (v["account"], v["display"]))
+    return {"calendars": [
+        {"collection": v["collection"], "display": v["display"],
+         "color": v["color"], "account": v["account"]}
+        for v in rows
+    ]}
+
+
+def find_ics(collection, uid):
+    """Locate the .ics holding this UID inside the named collection."""
+    if not ROOT.is_dir():
+        return None
+    needle = f"UID:{uid}"
+    for acct in sorted(ROOT.iterdir()):
+        d = acct / collection
+        if not d.is_dir():
+            continue
+        # vdirsyncer names files after the server href, which for Google and
+        # iCloud is almost always <uid>.ics — try that before scanning.
+        direct = d / f"{uid}.ics"
+        if direct.is_file():
+            return direct
+        for p in d.glob("*.ics"):
+            try:
+                if needle in p.read_text(errors="replace"):
+                    return p
+            except OSError:
+                continue
+    return None
+
+
+def cmd_detail(collection, uid):
+    import icalendar
+
+    path = find_ics(collection, uid)
+    if not path:
+        return {"error": "event not found"}
+    cal = icalendar.Calendar.from_ical(path.read_bytes())
+
+    def addr(v):
+        s = str(v)
+        return s[7:] if s.upper().startswith("MAILTO:") else s
+
+    for comp in cal.walk("VEVENT"):
+        if str(comp.get("UID", "")) != uid:
+            continue
+        attendees = []
+        raw = comp.get("ATTENDEE")
+        for a in (raw if isinstance(raw, list) else [raw]) if raw else []:
+            email = addr(a)
+            if email.endswith("@resource.calendar.google.com"):
+                continue  # meeting rooms — already shown as the location
+            p = getattr(a, "params", {})
+            attendees.append({
+                "email": email,
+                "name": str(p.get("CN", "")) or email,
+                "status": str(p.get("PARTSTAT", "")).lower(),
+                "optional": str(p.get("ROLE", "")).upper() == "OPT-PARTICIPANT",
+            })
+        org = comp.get("ORGANIZER")
+        rrule = comp.get("RRULE")
+        meta = collection_meta().get(collection, {})
+
+        desc = str(comp.get("DESCRIPTION", ""))
+        meet = str(comp.get("X-GOOGLE-CONFERENCE", ""))
+        if not meet:
+            m = re.search(r"https://meet\.google\.com/[a-z\-]+", desc)
+            meet = m.group(0) if m else ""
+        # Google wraps its Meet blurb in -::~:...::- fences; drop the block.
+        desc = re.sub(r"-::~[:~]+::-.*?-::~[:~]+::-\s*", "", desc, flags=re.S).strip()
+
+        return {
+            "title": str(comp.get("SUMMARY", "")) or "(no title)",
+            "description": desc,
+            "meet": meet,
+            "location": str(comp.get("LOCATION", "")),
+            "organizer": addr(org) if org else "",
+            "organizerName": str(getattr(org, "params", {}).get("CN", "")) if org else "",
+            "attendees": attendees,
+            "recurrence": rrule.to_ical().decode() if rrule else "",
+            "status": str(comp.get("STATUS", "")).lower(),
+            "url": str(comp.get("URL", "")),
+            "calendar": meta.get("display", collection),
+            "color": meta.get("color", DEFAULT_COLOR),
+            "link": meta.get("link", ""),
+            "linkLabel": meta.get("linkLabel", ""),
+        }
+    return {"error": "event not found"}
+
+
+def at(day, hhmm):
+    h, m = (int(x) for x in hhmm.split(":"))
+    return dt.datetime.combine(day, dt.time(h, m))
+
+
+def cmd_next(lookahead=15, grace=5):
+    """The meeting the island should be announcing right now, if any.
+
+    The window runs from `lookahead` minutes before the start to the actual
+    end of the meeting — an in-progress meeting must keep being announced,
+    not disappear a few minutes in. `grace` only pads events with no
+    duration, which would otherwise be over the instant they begin.
+    Enriched with the Meet link so the island's click can join directly.
+    """
+    today = dt.date.today()
+    now = dt.datetime.now()
+    days, err = khal_range(today, today)
+    if days is None:
+        return {"found": False, "error": err or "failed"}
+
+    meta = collection_meta()
+    best, best_start, best_end = None, None, None
+    for raw in days[0] if days else []:
+        e = map_event(raw, meta)
+        if e["allday"] or e["cancelled"] or not e["start"]:
+            continue
+        start = at(today, e["start"])
+        end = at(today, e["end"]) if e["end"] else start
+        if end <= start:
+            # Either a zero-length event, or one running past midnight, which
+            # khal reports as an end time earlier in the clock than the start.
+            end += dt.timedelta(days=1) if end < start else dt.timedelta(minutes=grace)
+        if not (start - dt.timedelta(minutes=lookahead) <= now < end):
+            continue
+        if best_start is None or start < best_start:
+            best, best_start, best_end = e, start, end
+    if not best:
+        return {"found": False}
+
+    detail = cmd_detail(best["collection"], best["uid"])
+    return {
+        "found": True,
+        "title": best["title"],
+        "start": best["start"],
+        "end": best["end"],
+        "startsAt": best_start.isoformat(timespec="minutes"),
+        "endsAt": best_end.isoformat(timespec="minutes"),
+        "ongoing": best_start <= now,
+        "calendar": best["calendar"],
+        "collection": best["collection"],
+        "uid": best["uid"],
+        "color": best["color"],
+        "location": best["location"],
+        "meet": detail.get("meet", "") if isinstance(detail, dict) else "",
+        "link": best.get("link", ""),
+        "linkLabel": best.get("linkLabel", ""),
+    }
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv:
+        print("usage: calendar-agenda day <ISO> | month <YYYY> <MM> | calendars | detail <collection> <uid> | next [lookahead-min]",
+              file=sys.stderr)
+        return 2
+    try:
+        if argv[0] == "day":
+            out = cmd_day(argv[1] if len(argv) > 1 else dt.date.today().isoformat())
+        elif argv[0] == "month":
+            now = dt.date.today()
+            y = int(argv[1]) if len(argv) > 1 else now.year
+            m = int(argv[2]) if len(argv) > 2 else now.month
+            out = cmd_month(y, m)
+        elif argv[0] == "calendars":
+            out = cmd_calendars()
+        elif argv[0] == "detail":
+            out = cmd_detail(argv[1], argv[2])
+        elif argv[0] == "next":
+            out = cmd_next(int(argv[1]) if len(argv) > 1 else 15)
+        else:
+            print(f"unknown command: {argv[0]}", file=sys.stderr)
+            return 2
+    except Exception as e:  # the bar must always get parseable JSON back
+        json.dump({"error": str(e), "items": [], "days": {}}, sys.stdout)
+        print()
+        return 1
+    json.dump(out, sys.stdout, ensure_ascii=False)
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

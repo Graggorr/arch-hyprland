@@ -1,0 +1,46 @@
+// fastfetch — sectioned layout, Nerd Font icons, ANSI palette (follows terminal theme)
+{
+    "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+    "logo": {
+        "type": "builtin",
+        "source": "arch",
+        "padding": { "top": 1, "left": 2, "right": 5 }
+    },
+    "display": {
+        "separator": "  ",
+        "color": { "keys": "blue", "title": "blue", "output": "white" },
+        "percent": { "type": 3 },
+        "bar": {
+            "char": { "elapsed": "━", "total": "━" },
+            "border": { "left": "", "right": "" },
+            "width": 10
+        },
+        "size": { "ndigits": 1 }
+    },
+    "modules": [
+        { "type": "custom", "format": "{#1;35}󰣇  SYSTEM" },
+        { "type": "os", "key": "  {#36}󰌢{#keys}  distro  " },
+        { "type": "kernel", "key": "  {#36}󰌽{#keys}  kernel  ", "format": "{release}" },
+        { "type": "uptime", "key": "  {#36}󰅐{#keys}  uptime  " },
+        { "type": "command", "key": "  {#36}󱦟{#keys}  age     ", "text": "echo \"$(( ($(date +%s) - $(stat -c %W /)) / 86400 )) days\"" },
+        { "type": "packages", "key": "  {#36}󰏗{#keys}  packages", "format": "{pacman} pacman{?snap} · {snap} snap{/snap}" },
+        "break",
+
+        { "type": "custom", "format": "{#1;35}󰧨  DESKTOP" },
+        { "type": "wm", "key": "  {#36}󰕰{#keys}  wm      " },
+        { "type": "theme", "key": "  {#36}󰉼{#keys}  theme   ", "format": "{theme2}" },
+        { "type": "terminal", "key": "  {#36}󰆍{#keys}  term    " },
+        { "type": "shell", "key": "  {#36}󱆃{#keys}  shell   " },
+        "break",
+
+        { "type": "custom", "format": "{#1;35}󰇄  HARDWARE" },
+        { "type": "command", "key": "  {#36}󰻠{#keys}  cpu     ", "text": "printf '%s · %s threads' \"$(sed -n 's/^model name[^:]*: //p' /proc/cpuinfo | head -1 | sed 's/(R)//g;s/(TM)//g;s/ CPU//;s/ *@.*//')\" \"$(nproc)\"" },
+        { "type": "gpu", "key": "  {#36}󰢮{#keys}  gpu     ", "format": "{vendor} {name}" },
+        { "type": "memory", "key": "  {#36}󰑭{#keys}  memory  ", "format": "{used} / {total}  {percentage-bar} {percentage}" },
+        { "type": "disk", "key": "  {#36}󰋊{#keys}  root    ", "folders": "/", "format": "{size-used} / {size-total}  {size-percentage-bar} {size-percentage}" },
+        { "type": "disk", "key": "  {#36}󰋊{#keys}  home    ", "folders": "/home", "format": "{size-used} / {size-total}  {size-percentage-bar} {size-percentage}" },
+        { "type": "display", "key": "  {#36}󰍹{#keys}  display ", "format": "{width}x{height} @ {refresh-rate} Hz · {name}" },
+        "break",
+        "break"
+    ]
+}

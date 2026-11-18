@@ -1,0 +1,346 @@
+{
+  "linux": [
+    {
+      "name": "Files & folders",
+      "items": [
+        {
+          "keys": "ls -la",
+          "desc": "list everything in the current folder, hidden files included"
+        },
+        {
+          "keys": "cd <dir>  ·  cd ..  ·  cd -",
+          "desc": "enter a folder / go up one / go back to the previous one"
+        },
+        {
+          "keys": "pwd",
+          "desc": "show which folder you are in"
+        },
+        {
+          "keys": "mv <file> <dir>/",
+          "desc": "move a file into another folder"
+        },
+        {
+          "keys": "mv <old> <new>",
+          "desc": "rename a file or folder"
+        },
+        {
+          "keys": "cp <file> <dir>/",
+          "desc": "copy a file"
+        },
+        {
+          "keys": "cp -r <dir> <dest>",
+          "desc": "copy a folder with everything in it"
+        },
+        {
+          "keys": "rm <file>",
+          "desc": "delete a file — no trash, gone for good"
+        },
+        {
+          "keys": "rm -r <dir>",
+          "desc": "delete a folder and all its contents"
+        },
+        {
+          "keys": "mkdir -p <a/b/c>",
+          "desc": "create a folder, parents included"
+        },
+        {
+          "keys": "touch <file>",
+          "desc": "create an empty file"
+        },
+        {
+          "keys": "ln -s <target> <link>",
+          "desc": "create a symlink"
+        },
+        {
+          "keys": "readlink -f <path>",
+          "desc": "resolve where a symlink really points"
+        },
+        {
+          "keys": "chmod +x <file>",
+          "desc": "make a script executable"
+        }
+      ]
+    },
+    {
+      "name": "Viewing files",
+      "items": [
+        {
+          "keys": "cat <file>",
+          "desc": "print a whole file"
+        },
+        {
+          "keys": "less <file>",
+          "desc": "page through a file — / searches, q quits"
+        },
+        {
+          "keys": "head -n 20 <file>  ·  tail -n 20 <file>",
+          "desc": "first / last 20 lines"
+        },
+        {
+          "keys": "tail -f <log>",
+          "desc": "follow a log file live"
+        }
+      ]
+    },
+    {
+      "name": "Finding things",
+      "items": [
+        {
+          "keys": "find <dir> -name '*.txt'",
+          "desc": "find files by name"
+        },
+        {
+          "keys": "grep -rn '<text>' <dir>",
+          "desc": "find text inside files, with line numbers"
+        },
+        {
+          "keys": "grep -i",
+          "desc": "make any grep case-insensitive"
+        },
+        {
+          "keys": "which <cmd>",
+          "desc": "where a command's binary lives"
+        },
+        {
+          "keys": "pacman -Qo <file>",
+          "desc": "which package owns a file"
+        }
+      ]
+    },
+    {
+      "name": "Disk & mounts",
+      "items": [
+        {
+          "keys": "df -h",
+          "desc": "free space on every partition"
+        },
+        {
+          "keys": "du -sh <dir>",
+          "desc": "how big a folder is"
+        },
+        {
+          "keys": "du -sh * | sort -h",
+          "desc": "what is eating the space here"
+        },
+        {
+          "keys": "lsblk -f",
+          "desc": "drives, partitions, filesystems"
+        },
+        {
+          "keys": "findmnt <mountpoint>",
+          "desc": "is it mounted, and with which options"
+        }
+      ]
+    },
+    {
+      "name": "Processes",
+      "items": [
+        {
+          "keys": "btop",
+          "desc": "process / CPU / memory monitor"
+        },
+        {
+          "keys": "pgrep -a <name>",
+          "desc": "find PIDs by process name"
+        },
+        {
+          "keys": "kill <pid>  ·  kill -9 <pid>",
+          "desc": "stop a process — -9 forces it"
+        },
+        {
+          "keys": "pkill -f <pattern>",
+          "desc": "kill by command line (careful: can match your own shell)"
+        },
+        {
+          "keys": "setsid -f <cmd>",
+          "desc": "launch something detached from this terminal"
+        }
+      ]
+    },
+    {
+      "name": "Packages (Arch)",
+      "items": [
+        {
+          "keys": "paru -Syu",
+          "desc": "update the whole system, repos + AUR"
+        },
+        {
+          "keys": "paru -S <pkg>",
+          "desc": "install a package"
+        },
+        {
+          "keys": "pacman -Rns <pkg>",
+          "desc": "remove a package with its config and unused deps"
+        },
+        {
+          "keys": "pacman -Ss <word>  ·  pacman -Qs <word>",
+          "desc": "search the repos / search what is installed"
+        },
+        {
+          "keys": "pacman -Ql <pkg>",
+          "desc": "list the files a package installed"
+        }
+      ]
+    },
+    {
+      "name": "Systemd & logs",
+      "items": [
+        {
+          "keys": "systemctl status <unit>",
+          "desc": "state of a service (--user for user units)"
+        },
+        {
+          "keys": "systemctl restart <unit>",
+          "desc": "restart a service"
+        },
+        {
+          "keys": "systemctl --user list-units --failed",
+          "desc": "failed user units"
+        },
+        {
+          "keys": "journalctl -u <unit> -e",
+          "desc": "a service's log, jumped to the end"
+        },
+        {
+          "keys": "journalctl -k -b",
+          "desc": "kernel messages this boot — mount and dirty-bit errors land here"
+        }
+      ]
+    },
+    {
+      "name": "Network",
+      "items": [
+        {
+          "keys": "ip a",
+          "desc": "interfaces and addresses"
+        },
+        {
+          "keys": "ping <host>",
+          "desc": "is it reachable"
+        },
+        {
+          "keys": "ss -tlnp",
+          "desc": "what is listening on which port"
+        },
+        {
+          "keys": "curl -LO <url>",
+          "desc": "download a file, following redirects"
+        }
+      ]
+    },
+    {
+      "name": "Archives",
+      "items": [
+        {
+          "keys": "tar -xf <file.tar.gz>",
+          "desc": "extract any tar archive"
+        },
+        {
+          "keys": "tar -czf out.tar.gz <dir>",
+          "desc": "create a compressed archive"
+        },
+        {
+          "keys": "unzip <file.zip>",
+          "desc": "extract a zip"
+        }
+      ]
+    },
+    {
+      "name": "This machine",
+      "items": [
+        {
+          "keys": "qs-restart",
+          "desc": "restart the Quickshell bar/shell (kills both process names)"
+        },
+        {
+          "keys": "hyprctl reload",
+          "desc": "reload the Hyprland config"
+        },
+        {
+          "keys": "Hyprland --verify-config -c ~/.config/hypr/hyprland.lua",
+          "desc": "validate the config before logging in on it"
+        },
+        {
+          "keys": "hyprctl binds -j",
+          "desc": "dump the live keybinds — what the Keybinds tab shows"
+        },
+        {
+          "keys": "uwsm stop",
+          "desc": "log out cleanly"
+        }
+      ]
+    }
+  ],
+  "apps": [
+    {
+      "name": "Ghostty",
+      "items": [
+        {
+          "keys": "CTRL+C / CTRL+SHIFT+C",
+          "desc": "copy selection (plain CTRL+C falls through to interrupt when nothing is selected)"
+        },
+        {
+          "keys": "CTRL+SHIFT+V",
+          "desc": "paste"
+        },
+        {
+          "keys": "CTRL+SHIFT+T  ·  CTRL+SHIFT+W",
+          "desc": "new tab / close tab"
+        },
+        {
+          "keys": "CTRL+SHIFT+←/→",
+          "desc": "previous / next tab"
+        },
+        {
+          "keys": "CTRL+SHIFT+O  ·  CTRL+SHIFT+E",
+          "desc": "split right / split down"
+        },
+        {
+          "keys": "CTRL+ALT+arrows",
+          "desc": "move between splits"
+        },
+        {
+          "keys": "CTRL+P",
+          "desc": "command palette"
+        },
+        {
+          "keys": "CTRL+= / CTRL+- / CTRL+0",
+          "desc": "font bigger / smaller / reset"
+        },
+        {
+          "keys": "SHIFT+PgUp/PgDn  ·  SHIFT+Home/End",
+          "desc": "scroll the backlog / jump to top or bottom"
+        }
+      ]
+    },
+    {
+      "name": "Fish shell",
+      "items": [
+        {
+          "keys": "↑  (after typing a prefix)",
+          "desc": "search history filtered by what you typed"
+        },
+        {
+          "keys": "CTRL+R",
+          "desc": "search command history"
+        },
+        {
+          "keys": "→  or  CTRL+F",
+          "desc": "accept the grey autosuggestion"
+        },
+        {
+          "keys": "ALT+→",
+          "desc": "accept one word of the autosuggestion"
+        },
+        {
+          "keys": "ALT+E",
+          "desc": "edit the current command line in your editor"
+        },
+        {
+          "keys": "CTRL+U  ·  CTRL+K",
+          "desc": "delete to line start / to line end"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+AUDIO_IGNORE='linux-wallpaperengine'
+INHIBIT_IGNORE='com\.anthropic\.Claude'
+
+audio_active() {
+    pactl list sink-inputs 2>/dev/null | awk -v ign="$AUDIO_IGNORE" '
+        /^Sink Input #/ { corked=""; mute="" }
+        /^[[:space:]]*Corked:/ { corked=$2 }
+        /^[[:space:]]*Mute:/   { mute=$2 }
+        /application\.name = / {
+            name=$0
+            sub(/.*application\.name = "/, "", name)
+            sub(/".*/, "", name)
+            if (corked=="no" && mute=="no" && name !~ ign) found=1
+        }
+        END { exit(found ? 0 : 1) }
+    '
+}
+
+inhibitor_active() {
+    hyprctl clients -j 2>/dev/null | python3 -c '
+import json, re, sys
+ign = re.compile(sys.argv[1])
+try:
+    clients = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if any(c.get("inhibitingIdle") and not ign.search(c.get("class", "")) for c in clients) else 1)
+' "$INHIBIT_IGNORE"
+}
+
+if audio_active; then
+    exit 1
+fi
+
+if inhibitor_active; then
+    exit 1
+fi
+
+exit 0

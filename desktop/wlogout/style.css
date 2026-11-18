@@ -1,0 +1,43 @@
+/* Minimalist wlogout — colours from matugen (theme switcher). */
+@import url("colors.css");
+
+* {
+    font-family: "JetBrainsMono Nerd Font", "Fira Sans";
+    font-size: 13px;
+    background-image: none;
+    transition: 0.15s ease;
+}
+
+/* translucent backdrop so the desktop stays visible */
+window {
+    background: alpha(@bg, 0.55);
+}
+
+/* small centred buttons (tuned for 2560x1440 with `-b 5`) */
+button {
+    color: @fg;
+    background-color: alpha(@pill, 0.92);
+    border: 2px solid @border;
+    border-radius: 18px;
+    margin: 635px 171px;
+    background-repeat: no-repeat;
+    background-position: center 30%;
+    background-size: 34px;
+    box-shadow: none;
+    text-shadow: none;
+}
+
+button:focus,
+button:active,
+button:hover {
+    color: @accfg;
+    background-color: @accent;
+    border-color: @accent;
+    outline: none;
+}
+
+#lock     { background-image: image(url("/usr/share/wlogout/icons/lock.png")); }
+#logout   { background-image: image(url("/usr/share/wlogout/icons/logout.png")); }
+#suspend  { background-image: image(url("/usr/share/wlogout/icons/suspend.png")); }
+#reboot   { background-image: image(url("/usr/share/wlogout/icons/reboot.png")); }
+#shutdown { background-image: image(url("/usr/share/wlogout/icons/shutdown.png")); }

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -u
+
+focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .name')
+index=$(WAYLAND_DEBUG=1 grim -g "0,0 1x1" - 2>&1 >/dev/null \
+    | grep -oP 'wl_output#\d+\.name\("\K[^"]+' \
+    | grep -nxF "$focused" | cut -d: -f1)
+
+if [[ -n "$index" ]]; then
+    exec flameshot screen -e -n "$((index - 1))" "$@"
+fi
+exec flameshot gui "$@"

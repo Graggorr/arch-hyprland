@@ -1,0 +1,30 @@
+#!/bin/sh
+STAMP="${XDG_STATE_HOME:-$HOME/.local/state}/calendar-sync-alert.last"
+QUIET_SECS=21600
+
+steps=$(journalctl --user -u vdirsyncer.service -n 200 -o cat --no-pager 2>/dev/null \
+    | sed -n 's/^calendar-sync-run: failed steps: *//p' | tail -n 1)
+[ -n "$steps" ] || steps="unknown step"
+
+hint=""
+case "$steps" in
+    *reminders*) hint="Reminders: run calendar-icloud-reminders auth (2FA) or --accept-terms sync." ;;
+esac
+case "$steps" in
+    *google*) hint="$hint Google: token may be revoked, see vdirsyncer discover." ;;
+esac
+
+now=$(date +%s)
+key="$steps"
+if [ -f "$STAMP" ]; then
+    last_time=$(sed -n 1p "$STAMP")
+    last_key=$(sed -n 2p "$STAMP")
+    if [ "$last_key" = "$key" ] && [ $((now - ${last_time:-0})) -lt "$QUIET_SECS" ]; then
+        exit 0
+    fi
+fi
+
+mkdir -p "$(dirname "$STAMP")"
+printf '%s\n%s\n' "$now" "$key" > "$STAMP"
+notify-send -u critical -a "Calendar sync" -i x-office-calendar \
+    "Calendar sync failing: $steps" "${hint:-Check journalctl --user -u vdirsyncer.service}"

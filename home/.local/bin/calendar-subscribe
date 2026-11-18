@@ -1,0 +1,487 @@
+#!/usr/bin/env python3
+"""Subscribe to any public iCalendar (ICS) feed, the way a phone does.
+
+Each subscription becomes a read-only vdirsyncer pair pointed at the feed URL,
+so the 10-minute vdirsyncer.timer that already syncs Google and iCloud refreshes
+it too and the island renders it like any other calendar.
+
+~/.config/calendar-subscriptions.json is the source of truth. The block it
+generates in the vdirsyncer config is rewritten wholesale on every change, so
+hand edits between the markers are lost — change the URL or colour here instead.
+"""
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+HOME = Path.home()
+REGISTRY = Path(os.environ.get("CAL_SUBS", HOME / ".config/calendar-subscriptions.json"))
+VDIR_CONFIG = Path(os.environ.get("VDIRSYNCER_CONFIG", HOME / ".config/vdirsyncer/config"))
+KHAL_CONFIG = Path(os.environ.get("CAL_KHAL_CONFIG", HOME / ".config/khal/config"))
+ROOT = Path(os.environ.get("CAL_ROOT", HOME / ".local/share/calendars"))
+STATUS = Path(os.environ.get("CAL_STATUS", HOME / ".local/state/vdirsyncer/status"))
+MONTH_CACHE = Path(os.environ.get("CAL_MONTH_CACHE", "/tmp/qs-calmonth"))
+
+ACCOUNT = "subscriptions"
+BEGIN = "# >>> calendar-subscribe: generated block, edit with `calendar-subscribe` >>>"
+END = "# <<< calendar-subscribe <<<"
+UA = "Mozilla/5.0 (X11; Linux x86_64) calendar-subscribe/1.0"
+TIMEOUT = 30
+
+# Feeds that were verified to serve a real ICS, so `add f1` beats hunting for
+# the URL. Anything else is added by URL. `link` is where the island's Watch
+# button goes — feeds like these carry no per-event URL of their own.
+CATALOG = {
+    "f1": {
+        "name": "Formula 1",
+        "url": "https://files-f1.motorsportcalendars.com/f1-calendar_gp.ics",
+        "color": "#e10600",
+        "link": "https://f1tv.formula1.com/",
+        "linkLabel": "Watch on F1TV",
+    },
+    "f1-all": {
+        "name": "Formula 1 (all sessions)",
+        "url": "https://files-f1.motorsportcalendars.com/f1-calendar_p1_p2_p3_qualifying_sprint_gp.ics",
+        "color": "#e10600",
+        "link": "https://f1tv.formula1.com/",
+        "linkLabel": "Watch on F1TV",
+    },
+}
+DEFAULT_LINK_LABEL = "Open link"
+
+PALETTE = ["#e10600", "#7b61ff", "#00a3a3", "#ff8f00", "#2e7d32", "#c2185b", "#0288d1", "#8d6e63"]
+
+
+def head(msg):
+    print(f"\033[1;36m{msg}\033[0m")
+
+
+def ok(msg):
+    print(f"\033[1;32m  ✓\033[0m {msg}")
+
+
+def warn(msg):
+    print(f"\033[1;33m  !\033[0m {msg}")
+
+
+def err(msg):
+    print(f"\033[1;31m  ✗\033[0m {msg}", file=sys.stderr)
+
+
+def load():
+    try:
+        data = json.loads(REGISTRY.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    subs = data.get("subscriptions", []) if isinstance(data, dict) else data
+    return [s for s in subs if s.get("slug") and s.get("url")]
+
+
+def save(subs):
+    REGISTRY.parent.mkdir(parents=True, exist_ok=True)
+    tmp = REGISTRY.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"subscriptions": subs}, indent=2, ensure_ascii=False) + "\n")
+    tmp.replace(REGISTRY)
+
+
+def slugify(name):
+    s = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+    return s or "calendar"
+
+
+def pair_of(slug):
+    return "sub_" + re.sub(r"[^a-z0-9]+", "_", slug.lower()).strip("_")
+
+
+def coll_dir(slug):
+    return ROOT / ACCOUNT / slug
+
+
+def norm_url(url):
+    url = url.strip()
+    if url.startswith("webcal://"):
+        return "https://" + url[len("webcal://"):]
+    if url.startswith("//"):
+        return "https:" + url
+    return url
+
+
+def fetch(url):
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/calendar, */*"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        return r.read()
+
+
+def probe(url):
+    """Confirm the URL really serves a calendar before writing any config.
+
+    A wrong URL otherwise fails silently later inside a timer run, which is a
+    miserable thing to debug — most mistakes are a webpage URL pasted instead
+    of the feed URL, and that is worth naming explicitly.
+    """
+    try:
+        raw = fetch(url)
+    except urllib.error.HTTPError as e:
+        raise SystemExit(f"the server answered {e.code} {e.reason}")
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        raise SystemExit(f"could not fetch: {e}")
+
+    text = raw.decode("utf-8", "replace")
+    if "BEGIN:VCALENDAR" not in text:
+        hint = " — that looks like a web page, not a feed" if "<html" in text[:2000].lower() else ""
+        raise SystemExit(f"the URL did not return an iCalendar file{hint}")
+
+    name = ""
+    m = re.search(r"^X-WR-CALNAME[^:]*:(.*)$", text, re.M)
+    if m:
+        name = m.group(1).strip()
+    return name, text.count("BEGIN:VEVENT")
+
+
+def render(subs):
+    out = [BEGIN]
+    for s in subs:
+        p = pair_of(s["slug"])
+        out += [
+            "",
+            f"[pair {p}]",
+            f'a = "{p}_local"',
+            f'b = "{p}_remote"',
+            # One feed is one collection, so the pair maps storage to storage
+            # directly instead of discovering anything.
+            "collections = null",
+            'conflict_resolution = "b wins"',
+            # The feed is read-only: anything written locally can never be
+            # pushed, so reverting keeps the mirror honest instead of piling
+            # up "partial sync" errors every run.
+            'partial_sync = "revert"',
+            "",
+            f"[storage {p}_local]",
+            'type = "filesystem"',
+            f'path = {json.dumps(str(coll_dir(s["slug"])).replace(str(HOME), "~") + "/")}',
+            'fileext = ".ics"',
+            "",
+            f"[storage {p}_remote]",
+            'type = "http"',
+            f"url = {json.dumps(s['url'])}",
+        ]
+    out += ["", END, ""]
+    return "\n".join(out)
+
+
+def write_vdir_config(subs):
+    text = VDIR_CONFIG.read_text() if VDIR_CONFIG.exists() else ""
+    text = re.sub(re.escape(BEGIN) + r".*?" + re.escape(END) + r"\n?", "", text, flags=re.S)
+    text = text.rstrip("\n") + "\n"
+    if subs:
+        text += "\n\n" + render(subs)
+    tmp = VDIR_CONFIG.with_suffix(".tmp")
+    tmp.write_text(text)
+    tmp.replace(VDIR_CONFIG)
+
+
+def ensure_khal():
+    """Give khal one discover block for the whole subscriptions account.
+
+    It must be inserted while still inside [calendars]: khal's config format
+    nests, so a [[subscriptions]] appended at the end of the file would be read
+    as a subsection of [default] and silently ignored.
+    """
+    if not KHAL_CONFIG.exists():
+        warn(f"no khal config at {KHAL_CONFIG}; skipped")
+        return False
+    lines = KHAL_CONFIG.read_text().splitlines()
+    if any(l.strip() == f"[[{ACCOUNT}]]" for l in lines):
+        return False
+    block = [
+        f"[[{ACCOUNT}]]",
+        f"path = {str(coll_dir('*')).replace(str(HOME), '~')}",
+        "type = discover",
+        "color = auto",
+        "readonly = True",
+        "",
+    ]
+    at = len(lines)
+    seen_calendars = False
+    for i, l in enumerate(lines):
+        s = l.strip()
+        if s == "[calendars]":
+            seen_calendars = True
+        elif seen_calendars and re.match(r"^\[[^\[]", s):
+            at = i
+            break
+    lines[at:at] = block
+    KHAL_CONFIG.write_text("\n".join(lines) + "\n")
+    ok(f"khal: added the [[{ACCOUNT}]] discover block")
+    return True
+
+
+def vdirsyncer(*args, quiet=False):
+    try:
+        p = subprocess.run(["vdirsyncer", *args], capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, timeout=180)
+    except FileNotFoundError:
+        err("vdirsyncer is not installed")
+        return False
+    except subprocess.TimeoutExpired:
+        err(f"vdirsyncer {' '.join(args)} timed out")
+        return False
+    if p.returncode != 0:
+        err(f"vdirsyncer {' '.join(args)} failed")
+        for line in (p.stderr or p.stdout or "").strip().splitlines()[-8:]:
+            print(f"    {line}", file=sys.stderr)
+        return False
+    if not quiet:
+        for line in (p.stderr or "").strip().splitlines():
+            print(f"    {line}")
+    return True
+
+
+def bust_cache():
+    """The island pins month grids to a fingerprint of the collection mtimes,
+    but a brand new collection dir is not in the old fingerprint at all."""
+    shutil.rmtree(MONTH_CACHE, ignore_errors=True)
+
+
+def pick_color(subs):
+    used = {s.get("color") for s in subs}
+    for c in PALETTE:
+        if c not in used:
+            return c
+    return PALETTE[len(subs) % len(PALETTE)]
+
+
+def write_meta(sub):
+    d = coll_dir(sub["slug"])
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "displayname").write_text(sub["name"])
+    (d / "color").write_text(sub["color"])
+
+
+def cmd_add(args):
+    subs = load()
+    target = args.url.strip()
+    name, color = args.name, args.color
+    link, link_label = args.link, args.link_label
+
+    if target in CATALOG:
+        c = CATALOG[target]
+        name = name or c["name"]
+        color = color or c["color"]
+        link = link or c.get("link", "")
+        link_label = link_label or c.get("linkLabel", "")
+        url = c["url"]
+    else:
+        url = norm_url(target)
+        if not re.match(r"^https?://", url):
+            raise SystemExit(f"not a URL: {target} (try `calendar-subscribe catalog` for shortcuts)")
+
+    head(f"Checking {url}")
+    feed_name, count = probe(url)
+    ok(f"{count} event{'s' if count != 1 else ''} in the feed"
+       + (f", named “{feed_name}”" if feed_name else ""))
+
+    name = name or feed_name or re.sub(r"\.ics$", "", url.rsplit("/", 1)[-1]) or "Subscription"
+    slug = args.slug or slugify(name)
+    if any(s["slug"] == slug for s in subs):
+        raise SystemExit(f"a subscription named “{slug}” already exists — remove it first")
+    if any(s["url"] == url for s in subs):
+        raise SystemExit("that URL is already subscribed")
+    color = color or pick_color(subs)
+    if not re.match(r"^#[0-9a-fA-F]{6}$", color):
+        raise SystemExit(f"colour must be #rrggbb, got {color}")
+
+    sub = {"slug": slug, "name": name, "url": url, "color": color}
+    if link:
+        sub["link"] = norm_url(link)
+        sub["linkLabel"] = link_label or DEFAULT_LINK_LABEL
+    subs.append(sub)
+
+    write_meta(sub)
+    save(subs)
+    write_vdir_config(subs)
+    ensure_khal()
+    ok(f"“{name}” registered as {slug}")
+
+    if args.no_sync:
+        warn("skipped the first sync (--no-sync)")
+        return 0
+
+    head("First sync")
+    pair = pair_of(slug)
+    if not vdirsyncer("discover", pair, quiet=True) or not vdirsyncer("sync", pair):
+        err("the subscription is configured but did not sync — fix the feed or "
+            f"remove it with `calendar-subscribe remove {slug}`")
+        return 1
+    bust_cache()
+    n = len(list(coll_dir(slug).glob("*.ics")))
+    ok(f"{n} event{'s' if n != 1 else ''} in {coll_dir(slug)}")
+    ok("it refreshes with every vdirsyncer run (every 10 minutes)")
+    return 0
+
+
+def cmd_list(args):
+    subs = load()
+    if args.json:
+        rows = []
+        for s in subs:
+            d = coll_dir(s["slug"])
+            rows.append({**s, "events": len(list(d.glob("*.ics"))) if d.is_dir() else 0,
+                         "path": str(d)})
+        json.dump({"subscriptions": rows}, sys.stdout, ensure_ascii=False, indent=2)
+        print()
+        return 0
+    if not subs:
+        print("No subscriptions yet. Try:  calendar-subscribe add f1")
+        return 0
+    head(f"{len(subs)} subscription{'s' if len(subs) != 1 else ''}")
+    for s in subs:
+        d = coll_dir(s["slug"])
+        n = len(list(d.glob("*.ics"))) if d.is_dir() else 0
+        print(f"  \033[1m{s['slug']}\033[0m  {s['name']}  ({n} events, {s['color']})")
+        print(f"      {s['url']}")
+        if s.get("link"):
+            print(f"      {s.get('linkLabel', DEFAULT_LINK_LABEL)} → {s['link']}")
+    return 0
+
+
+def cmd_set(args):
+    subs = load()
+    sub = next((s for s in subs if s["slug"] == args.slug), None)
+    if sub is None:
+        raise SystemExit(f"no subscription named “{args.slug}”")
+
+    if args.name:
+        sub["name"] = args.name
+    if args.color:
+        if not re.match(r"^#[0-9a-fA-F]{6}$", args.color):
+            raise SystemExit(f"colour must be #rrggbb, got {args.color}")
+        sub["color"] = args.color
+    if args.link is not None:
+        # An empty --link clears it, which is the only way to drop a link
+        # without removing the whole subscription.
+        if args.link.strip():
+            sub["link"] = norm_url(args.link)
+            sub.setdefault("linkLabel", DEFAULT_LINK_LABEL)
+        else:
+            sub.pop("link", None)
+            sub.pop("linkLabel", None)
+    if args.link_label:
+        if not sub.get("link"):
+            raise SystemExit("set a --link before naming it")
+        sub["linkLabel"] = args.link_label
+
+    save(subs)
+    write_meta(sub)
+    bust_cache()
+    ok(f"{sub['slug']}: {sub['name']}, {sub['color']}"
+       + (f", {sub['linkLabel']} → {sub['link']}" if sub.get("link") else ""))
+    return 0
+
+
+def cmd_remove(args):
+    subs = load()
+    keep = [s for s in subs if s["slug"] != args.slug]
+    if len(keep) == len(subs):
+        raise SystemExit(f"no subscription named “{args.slug}”")
+    save(keep)
+    write_vdir_config(keep)
+    shutil.rmtree(coll_dir(args.slug), ignore_errors=True)
+    pair = pair_of(args.slug)
+    for p in STATUS.glob(f"{pair}*"):
+        shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+    bust_cache()
+    ok(f"removed {args.slug}")
+    return 0
+
+
+def cmd_refresh(args):
+    subs = load()
+    if not subs:
+        warn("nothing to refresh")
+        return 0
+    targets = [s for s in subs if not args.slug or s["slug"] == args.slug]
+    if not targets:
+        raise SystemExit(f"no subscription named “{args.slug}”")
+    rc = 0
+    for s in targets:
+        head(f"{s['name']}")
+        # A feed that started 404ing must not stop the others from refreshing.
+        if not vdirsyncer("sync", pair_of(s["slug"])):
+            rc = 1
+    bust_cache()
+    return rc
+
+
+def cmd_catalog(args):
+    head("Known feeds (use the shortcut instead of a URL)")
+    for k, c in CATALOG.items():
+        print(f"  \033[1m{k}\033[0m  {c['name']}\n      {c['url']}")
+        if c.get("link"):
+            print(f"      {c['linkLabel']} → {c['link']}")
+    print("\n  Anything else: paste the feed's URL (webcal:// works too).")
+    print("  On a website look for “Subscribe”, “iCal”, “ICS” or a link ending in .ics.")
+    return 0
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog="calendar-subscribe",
+        description="Subscribe to public iCalendar (ICS) feeds — F1, sports, holidays, anything.")
+    sub = ap.add_subparsers(dest="cmd")
+
+    a = sub.add_parser("add", help="subscribe to a feed URL or a catalog shortcut")
+    a.add_argument("url", help="feed URL, webcal:// URL, or a shortcut like f1")
+    a.add_argument("--name", help="display name (default: the feed's own name)")
+    a.add_argument("--color", help="dot colour in the island, #rrggbb")
+    a.add_argument("--slug", help="directory/id name (default: derived from the name)")
+    a.add_argument("--link", help="URL for the island's Watch button (e.g. an F1TV page)")
+    a.add_argument("--link-label", help="button text for --link")
+    a.add_argument("--no-sync", action="store_true", help="register it without syncing now")
+    a.set_defaults(fn=cmd_add)
+
+    s = sub.add_parser("set", help="change an existing subscription")
+    s.add_argument("slug")
+    s.add_argument("--name")
+    s.add_argument("--color")
+    s.add_argument("--link", help="Watch-button URL; pass '' to clear it")
+    s.add_argument("--link-label")
+    s.set_defaults(fn=cmd_set)
+
+    l = sub.add_parser("list", help="show current subscriptions")
+    l.add_argument("--json", action="store_true")
+    l.set_defaults(fn=cmd_list)
+
+    r = sub.add_parser("remove", help="unsubscribe and delete its local copy")
+    r.add_argument("slug")
+    r.set_defaults(fn=cmd_remove)
+
+    f = sub.add_parser("refresh", help="sync subscriptions now")
+    f.add_argument("slug", nargs="?")
+    f.set_defaults(fn=cmd_refresh)
+
+    sub.add_parser("catalog", help="list known feeds").set_defaults(fn=cmd_catalog)
+
+    args = ap.parse_args()
+    if not getattr(args, "fn", None):
+        ap.print_help()
+        return 2
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except SystemExit as e:
+        if isinstance(e.code, str):
+            err(e.code)
+            sys.exit(1)
+        raise
+    except KeyboardInterrupt:
+        sys.exit(130)

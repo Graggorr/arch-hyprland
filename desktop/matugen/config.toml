@@ -1,0 +1,52 @@
+# Palette targets for the theme switcher. ~/.config/hypr/scripts/wallpapers.py
+# reads this list and renders each template itself from matugen's Material
+# roles for the active theme (plus the ansi_* roles it derives), so a target
+# is one template + one entry here. Run: wallpapers.py theme
+# Window frames are deliberately absent: hyprland.lua keeps them fixed.
+[config]
+
+[templates.quickshell]
+input_path  = "@HOME@/.config/matugen/templates/quickshell.css"
+output_path = "@HOME@/.config/quickshell/colors.css"
+
+[templates.wlogout]
+input_path  = "@HOME@/.config/matugen/templates/wlogout.css"
+output_path = "@HOME@/.config/wlogout/colors.css"
+
+[templates.rofi]
+input_path  = "@HOME@/.config/matugen/templates/powermenu.rasi"
+output_path = "@HOME@/.config/rofi/powermenu.rasi"
+
+[templates.rofi-launcher]
+input_path  = "@HOME@/.config/matugen/templates/launcher.rasi"
+output_path = "@HOME@/.config/rofi/config.rasi"
+
+[templates.we-picker]
+input_path  = "@HOME@/.config/matugen/templates/we-picker.rasi"
+output_path = "@HOME@/.config/rofi/we-picker.rasi"
+
+# Colours only. gtk.css in each directory imports this file and does the
+# styling, so a regenerated palette never overwrites the stylesheet.
+[templates.gtk3]
+input_path  = "@HOME@/.config/matugen/templates/gtk-colors.css"
+output_path = "@HOME@/.config/gtk-3.0/colors.css"
+
+[templates.gtk4]
+input_path  = "@HOME@/.config/matugen/templates/gtk-colors.css"
+output_path = "@HOME@/.config/gtk-4.0/colors.css"
+
+[templates.nvim]
+input_path  = "@HOME@/.config/matugen/templates/nvim.lua"
+output_path = "@HOME@/.config/nvim/lua/matugen.lua"
+
+[templates.ghostty]
+input_path  = "@HOME@/.config/matugen/templates/ghostty"
+output_path = "@HOME@/.config/ghostty/colors"
+
+[templates.qt6ct]
+input_path  = "@HOME@/.config/matugen/templates/qt6ct.conf"
+output_path = "@HOME@/.config/qt6ct/colors/matugen.conf"
+
+[templates.btop]
+input_path  = "@HOME@/.config/matugen/templates/btop.theme"
+output_path = "@HOME@/.config/btop/themes/matugen.theme"

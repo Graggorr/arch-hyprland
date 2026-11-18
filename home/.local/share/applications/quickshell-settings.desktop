@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+GenericName=Shell Settings
+Comment=Dynamic island, control center and dock settings
+Exec=qs ipc call settings open
+Icon=preferences-system
+Categories=Settings;
+Keywords=settings;preferences;dock;island;quickshell;
+StartupWMClass=org.quickshell

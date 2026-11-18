@@ -1,0 +1,15 @@
+# Extra process patterns that count as "a game is running", one per line, as
+# pattern|label. The pattern is passed to `pgrep -f`, so it matches against the
+# full command line. Lines starting with # are ignored, and the file itself is
+# optional — gamedetect.sh already knows Steam (via the reaper's
+# "SteamLaunch AppId=" argument, native and Proton alike), Lutris, Heroic,
+# gamescope and Bottles.
+#
+# Add an entry when a game launches outside all of those, e.g. a standalone
+# installer, a raw wine prefix, or a Minecraft launcher:
+#
+# MinecraftLauncher|Minecraft
+# /opt/mygame/bin/mygame|My Game
+#
+# Keep patterns specific. `pgrep -f` matches substrings, so a loose pattern like
+# "java" would hold game mode on for every JVM process on the machine.

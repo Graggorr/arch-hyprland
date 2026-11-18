@@ -1,0 +1,188 @@
+@import url("colors.css");
+
+/* Material 3 on top of libadwaita, sharing the wallpaper palette matugen
+   writes into colors.css. This file is hand-written and is not regenerated —
+   only the imported colours change when the wallpaper does.
+
+   Scope: GTK4 / libadwaita apps (Nautilus, pwvucontrol, the portals). The
+   GTK3 sheet is a separate file because adw-gtk3 needs different selectors
+   for the same result. */
+
+/* ── chrome ─────────────────────────────────────────────────────────── */
+/* Headerbar melts into the window: an app is one surface, and the divider
+   under a titlebar is the one line that stops it reading that way. */
+/* Transparent, not "the window colour": a terminal at background-opacity 0.2
+   is transparent all the way down to the liquid-glass decoration, and painting
+   either the window or its headerbar an opaque surface stacks a dark slab on
+   top of the glass. libadwaita already paints @window_bg_color for apps that
+   want a solid background, so inheriting is both correct and seamless. */
+headerbar {
+  background: transparent;
+  box-shadow: none;
+  border-bottom: none;
+  min-height: 46px;
+}
+headerbar.default-decoration { min-height: 46px; }
+windowhandle > box { border-bottom: none; }
+
+/* ── sidebars ───────────────────────────────────────────────────────── */
+.navigation-sidebar,
+.sidebar-pane,
+.sidebar-pane .background,
+placessidebar list {
+  background-color: @m3_surface_container_low;
+}
+
+/* Pills, not full-width bars. A selected row in M3 is a shape, which is what
+   makes a sidebar read as a list of destinations rather than a table. */
+.navigation-sidebar > row,
+placessidebar row {
+  border-radius: 14px;
+  margin: 1px 6px;
+  min-height: 34px;
+  padding: 0 8px;
+  color: @m3_on_surface_variant;
+}
+.navigation-sidebar > row:hover,
+placessidebar row:hover {
+  background-color: alpha(@m3_on_surface, 0.07);
+}
+.navigation-sidebar > row:selected,
+.navigation-sidebar > row:selected:hover,
+placessidebar row:selected {
+  background-color: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+  font-weight: 600;
+}
+.navigation-sidebar > row:selected image,
+placessidebar row:selected image { color: @m3_on_secondary_container; }
+
+/* ── lists and cards ────────────────────────────────────────────────── */
+.boxed-list,
+list.boxed-list,
+.card {
+  border-radius: 18px;
+  background-color: @m3_surface_container;
+  border: none;
+}
+.boxed-list > row:first-child { border-top-left-radius: 18px; border-top-right-radius: 18px; }
+.boxed-list > row:last-child { border-bottom-left-radius: 18px; border-bottom-right-radius: 18px; }
+row.activatable:hover { background-color: alpha(@m3_on_surface, 0.06); }
+
+gridview > child,
+listview > row {
+  border-radius: 14px;
+}
+listview > row:selected,
+gridview > child:selected {
+  background-color: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+}
+
+/* ── controls ───────────────────────────────────────────────────────── */
+button {
+  border-radius: 12px;
+  min-height: 32px;
+  border: none;
+  background-image: none;
+  background-color: alpha(@m3_on_surface, 0.08);
+  box-shadow: none;
+}
+button:hover { background-color: alpha(@m3_on_surface, 0.14); }
+button:active,
+button:checked {
+  background-color: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+}
+button.flat {
+  background-color: transparent;
+}
+button.flat:hover { background-color: alpha(@m3_on_surface, 0.10); }
+button.suggested-action {
+  background-color: @m3_primary;
+  color: @m3_on_primary;
+}
+button.destructive-action {
+  background-color: @m3_error;
+  color: @accent_fg_color;
+}
+button.circular { border-radius: 999px; }
+
+/* Fully rounded, filled fields — the search bar is the control a file
+   manager is used through, so it gets the M3 shape rather than a box. */
+entry,
+.entry,
+searchbar entry,
+entry.search {
+  border-radius: 14px;
+  min-height: 34px;
+  border: none;
+  box-shadow: none;
+  background-color: @m3_surface_container_high;
+  color: @m3_on_surface;
+}
+entry:focus-within,
+entry:focus {
+  box-shadow: inset 0 0 0 2px @m3_primary;
+}
+
+popover > contents,
+popover > arrow {
+  border-radius: 18px;
+  background-color: @popover_bg_color;
+  border: none;
+}
+menubutton > button { border-radius: 12px; }
+
+/* Path bar: each crumb is its own target, so each gets its own shape. */
+.path-bar-box button,
+.path-bar button {
+  border-radius: 10px;
+  margin: 0 1px;
+}
+
+switch { border-radius: 999px; }
+switch:checked { background-color: @m3_primary; }
+
+progressbar > trough,
+scale > trough {
+  border-radius: 999px;
+  background-color: alpha(@m3_on_surface, 0.14);
+}
+progressbar > trough > progress,
+scale > trough > highlight {
+  border-radius: 999px;
+  background-color: @m3_primary;
+}
+scale > trough > slider {
+  background-color: @m3_primary;
+  border: none;
+  box-shadow: none;
+}
+
+/* ── scrollbars ─────────────────────────────────────────────────────── */
+scrollbar { background: transparent; border: none; }
+scrollbar > range > trough { background: transparent; }
+scrollbar > range > trough > slider {
+  background-color: alpha(@m3_on_surface, 0.28);
+  border-radius: 999px;
+  min-width: 7px;
+  min-height: 7px;
+  margin: 3px;
+}
+scrollbar > range > trough > slider:hover {
+  background-color: alpha(@m3_on_surface, 0.45);
+}
+
+/* ── notebooks / view switchers ─────────────────────────────────────── */
+viewswitcher button,
+tabbar tabbox tab {
+  border-radius: 12px;
+}
+tabbar tabbox tab:checked {
+  background-color: @m3_secondary_container;
+  color: @m3_on_secondary_container;
+}
+
+/* ── status pages ───────────────────────────────────────────────────── */
+statuspage > box > clamp > box > image { color: alpha(@m3_primary, 0.7); }

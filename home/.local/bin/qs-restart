@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+pkill -x qs
+pkill -x quickshell
+sleep 0.4
+setsid -f qs -p "$HOME/.config/quickshell/shell.qml" >/dev/null 2>&1

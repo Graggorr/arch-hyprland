@@ -1,0 +1,29 @@
+#!/bin/sh
+CONFIG="${VDIRSYNCER_CONFIG:-$HOME/.config/vdirsyncer/config}"
+failed=""
+
+note_fail() {
+    failed="$failed $1"
+}
+
+pairs=$(sed -n 's/^\[pair  *\([^]]*\)\]/\1/p' "$CONFIG")
+
+if [ -z "$pairs" ]; then
+    echo "calendar-sync-run: no pairs found in $CONFIG" >&2
+    exit 1
+fi
+
+for pair in $pairs; do
+    /usr/bin/vdirsyncer metasync "$pair" || note_fail "metasync:$pair"
+    /usr/bin/vdirsyncer sync "$pair" || note_fail "sync:$pair"
+done
+
+"$HOME/.local/bin/calendar-gtasks" refresh || note_fail gtasks
+"$HOME/.local/bin/calendar-icloud-reminders" sync || note_fail reminders
+"$HOME/.local/bin/calendar-agenda" month >/dev/null || note_fail agenda
+
+if [ -n "$failed" ]; then
+    echo "calendar-sync-run: failed steps:$failed" >&2
+    exit 1
+fi
+exit 0

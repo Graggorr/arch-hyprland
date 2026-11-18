@@ -1,0 +1,10 @@
+[Unit]
+Description=Sync calendars with vdirsyncer
+Documentation=https://vdirsyncer.pimutils.org/
+After=network-online.target
+OnFailure=calendar-sync-alert.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/calendar-sync-run
+ExecStartPost=/usr/bin/rm -f %S/calendar-sync-alert.last
