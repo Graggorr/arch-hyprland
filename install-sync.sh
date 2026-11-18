@@ -36,10 +36,8 @@ systemctl --user enable --now desktop-sync.timer 2>/dev/null \
     && note "enabled desktop-sync.timer (3 min after login, then hourly)" \
     || warn "could not enable desktop-sync.timer — run: systemctl --user enable --now desktop-sync.timer"
 
-SSH_CMD="$(git -C "$REPO_ROOT" config core.sshCommand || echo ssh)"
-if ! GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="$SSH_CMD -o BatchMode=yes" \
-    git -C "$REPO_ROOT" ls-remote --exit-code origin HEAD >/dev/null 2>&1; then
-    warn "this clone cannot fetch unattended — see 'Keeping it updated' in README.md"
+if ! GIT_TERMINAL_PROMPT=0 git -C "$REPO_ROOT" ls-remote --exit-code origin HEAD >/dev/null 2>&1; then
+    warn "this clone cannot fetch unattended — re-clone it from https://github.com/Graggorr/arch-hyprland.git"
 fi
 
 info "Sync done."

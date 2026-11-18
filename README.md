@@ -17,15 +17,14 @@ is set up on your own machine with your own credentials and stays there.
 On a fresh Arch install, logged in as your normal user (not root):
 
 ```bash
-git clone git@github.com:Graggorr/arch-hyprland.git ~/arch-hyprland
+sudo pacman -S --needed git
+git clone https://github.com/Graggorr/arch-hyprland.git ~/arch-hyprland
 cd ~/arch-hyprland
 ./install.sh
 ```
 
-Cloning over SSH needs an SSH key on your GitHub account
-(`ssh-keygen -t ed25519`, then add the `.pub` under GitHub → Settings → SSH
-keys). The hourly updater uses the same clone, so the key must work without a
-passphrase prompt.
+The repo is public, so cloning over HTTPS needs no GitHub account, SSH key or
+token. The hourly updater fetches the same way.
 
 Options:
 
@@ -50,7 +49,7 @@ screen.
 |---|---|
 | Desktop | Hyprland, Quickshell bar + dynamic island + control center + dock, rofi as a fallback launcher |
 | Theming | Wallpaper-driven: the bar, GTK, Qt, rofi, the terminal and the lock screen are recoloured from the wallpaper (`Super+W`) |
-| Apps | Brave, Telegram, Discord, Spotify, Claude Desktop, VLC, Nautilus, Loupe, File Roller, pavucontrol, Seahorse, Flameshot |
+| Apps | Brave, Telegram, Discord, Spotify, Claude Desktop, VLC, Nautilus, Loupe, File Roller, pavucontrol, Seahorse, Flameshot, GPU Screen Recorder |
 | Calendar | Google / iCloud calendars and Google Tasks in the island (your own accounts, see below) |
 | Discord | Mute, deafen and Go Live from global hotkeys, even while Discord is unfocused |
 | Gaming | Steam, gamescope, gamemode, MangoHud, multilib |
@@ -77,6 +76,7 @@ screen.
 | `Super + L` | lock · `Super + End` log out · `Super + Pause` sleep |
 | `Print` / `Super + Print` | area to clipboard / Flameshot on this monitor |
 | `Alt + '` / `Alt + I` / `Alt + P` | Discord mute / deafen / Go Live |
+| `Alt + Z` | GPU Screen Recorder overlay (record, replay, screenshot; its own hotkey) |
 
 All bindings live in `~/.config/hypr/binds.lua`. Which terminal, browser, file
 manager and mixer they launch is set at the top of

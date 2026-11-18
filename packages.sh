@@ -74,6 +74,7 @@ PKG_BASE=(
     nodejs
     vlc
     flameshot
+    gpu-screen-recorder-ui
     libsecret
 
     vdirsyncer
