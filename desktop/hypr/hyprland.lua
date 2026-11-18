@@ -12,7 +12,16 @@
 
 local HOME = os.getenv("HOME")
 
+-- ── Monitors ──────────────────────────────────────────────────
+-- Any monitor gets a working default. displays.lua, written for this
+-- machine's monitors by scripts/monitors.py at first login and on every
+-- hotplug, refines them: native resolution at the highest refresh rate, a
+-- scale for HiDPI panels, left-to-right positions. Each monitor then owns
+-- ten workspaces in that order (1-10, 11-20, ...), which is what SUPER+N in
+-- binds.lua and the workspace strip expect.
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1.0 })
+
+require("monitors-apply")(10)
 
 -- ── Programs ──────────────────────────────────────────────────
 local terminal      = "ghostty"

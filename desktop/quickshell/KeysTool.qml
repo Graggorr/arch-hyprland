@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 
 // The machine's cheatsheet. Three sources under one search box: the live
@@ -50,6 +51,29 @@ Item {
         if (root.keyNames[key]) key = root.keyNames[key];
         else if (key.indexOf("XF86") === 0) key = key.substring(4);
         parts.push(key);
+        return parts.join(" + ");
+    }
+
+    // hypr/binds.lua writes every bind with its group (Apps, Windows,
+    // Discord, …) on each load; when that manifest exists the keybind part of
+    // the sheet follows its headers instead of one flat hyprctl list.
+    property var bindGroups: []
+    FileView {
+        path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/hypr/keybinds-manifest.json"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            try { root.bindGroups = JSON.parse(text()).groups || []; } catch (e) { root.bindGroups = []; }
+        }
+    }
+    function manifestChord(it) {
+        const parts = it.keys === "" ? [] : it.keys.split("+").map(t => {
+            t = t.trim();
+            if (root.keyNames[t]) return root.keyNames[t];
+            if (t.indexOf("XF86") === 0) return t.substring(4);
+            return t;
+        });
+        if (it.kind === "prefix") parts.push(it.suffix);
         return parts.join(" + ");
     }
 
@@ -111,8 +135,21 @@ Item {
             out.push({ header: name });
             for (let i = 0; i < hits.length; i++) out.push(hits[i]);
         }
-        if (root.section === "all" || root.section === "keys")
-            addCat("Hyprland keybinds", root.binds);
+        if (root.section === "all" || root.section === "keys") {
+            if (root.bindGroups.length > 0) {
+                for (let g = 0; g < root.bindGroups.length; g++) {
+                    const items = [];
+                    for (let i = 0; i < root.bindGroups[g].items.length; i++) {
+                        const it = root.bindGroups[g].items[i];
+                        if (it.kind === "keys" && it.keys === "") continue;
+                        items.push({ keys: root.manifestChord(it), desc: it.label });
+                    }
+                    addCat(root.bindGroups[g].name, items);
+                }
+            } else {
+                addCat("Hyprland keybinds", root.binds);
+            }
+        }
         if (root.section === "all" || root.section === "linux")
             for (let i = 0; i < root.linux.length; i++) addCat(root.linux[i].name, root.linux[i].items);
         if (root.section === "all" || root.section === "apps")

@@ -47,13 +47,15 @@ FloatingWindow {
         { id: "cc",       glyph: "\u{f0570}", name: "Control Center" },
         { id: "dock",     glyph: "\u{f10a9}", name: "Dock" },
         { id: "sound",    glyph: "\u{f057e}", name: "Sound" },
+        { id: "keys",     glyph: "\u{f030c}", name: "Keybinds" },
+        { id: "displays", glyph: "\u{f037a}", name: "Displays" },
         { id: "behavior", glyph: "\u{f0493}", name: "Behavior" }
-    ]
+    ].sort((a, b) => a.name.localeCompare(b.name))
 
     // The order General lists its rows in. The rows themselves are declared
     // further down, next to the sections they were split off from.
     readonly property var generalKeys: [
-        "shellMode", "dnd", "gameMode", "dock", "menuBar", "topTray", "statusCircle", "clock24h", "liveBars"
+        "shellMode", "dnd", "gameMode", "dock", "menuBar", "topTray", "statusCircle", "clock24h", "liveBars", "desktopUpdates"
     ]
 
     // A section whose rows all went elsewhere, or mean nothing in the mode in
@@ -63,10 +65,10 @@ FloatingWindow {
         const out = [];
         for (let s = 0; s < root.sections.length; s++) {
             const id = root.sections[s].id;
-            let keep = id === "cc" || id === "sound";
+            let keep = id === "cc" || id === "sound" || id === "keys" || id === "displays";
             for (let i = 0; !keep && i < root.registry.length; i++) {
                 const r = root.registry[i];
-                keep = r.section === id && !(r.notchOnly && !notch) && !(r.islandOnly && notch);
+                keep = r.section === id && !(r.notchOnly && !notch) && !(r.islandOnly && notch) && !(r.syncOnly && !IslandState.syncInstalled);
             }
             if (keep) out.push(root.sections[s]);
         }
@@ -102,6 +104,9 @@ FloatingWindow {
           label: "Album art while a player is up",
           desc: "Circle detaches it beside the pill, the Duo look",
           choices: [ { id: "circle", label: "Circle" }, { id: "pill", label: "In pill" }, { id: "off", label: "Hidden" } ] },
+        { section: "general", type: "toggle", key: "desktopUpdates", syncOnly: true,
+          label: "Desktop updates",
+          desc: "Pull new versions of this desktop every hour · off keeps your config exactly as it is" },
         { section: "general", type: "toggle", key: "liveBars",
           label: "Live audio canvas",
           desc: "Media bars while a player plays, the call waveform during a call",
@@ -289,7 +294,7 @@ FloatingWindow {
         // Rows that mean nothing in the mode in use are left out: the notch
         // is welded to the edge, so it has no gaps or lift to tune.
         const notch = IslandState.notch;
-        const fits = (r) => !(r.notchOnly && !notch) && !(r.islandOnly && notch);
+        const fits = (r) => !(r.notchOnly && !notch) && !(r.islandOnly && notch) && !(r.syncOnly && !IslandState.syncInstalled);
         if (q === "" && root.section === "general") {
             const out = [];
             for (let k = 0; k < root.generalKeys.length; k++)
@@ -565,7 +570,7 @@ FloatingWindow {
                         id: rowsFlick
                         anchors.fill: parent
                         anchors.margins: 18
-                        visible: root.searching || (root.section !== "cc" && root.section !== "sound")
+                        visible: root.searching || (root.section !== "cc" && root.section !== "sound" && root.section !== "keys" && root.section !== "displays")
                         contentHeight: rowsCol.implicitHeight
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
@@ -671,8 +676,11 @@ FloatingWindow {
                                         theme: root.theme
                                         enabled: !row.idle
                                         opacity: row.idle ? 0.35 : 1
-                                        checked: row.value === true
-                                        onToggled: IslandState.setPref(row.modelData.key, !(row.value === true))
+                                        checked: row.modelData.key === "desktopUpdates" ? IslandState.syncEnabled : row.value === true
+                                        onToggled: {
+                                            if (row.modelData.key === "desktopUpdates") IslandState.setDesktopUpdates(!IslandState.syncEnabled);
+                                            else IslandState.setPref(row.modelData.key, !(row.value === true));
+                                        }
                                     }
 
                                     // slider — label left, track right, live
@@ -1306,6 +1314,28 @@ FloatingWindow {
                             font.family: root.theme.fontMono
                             font.pixelSize: 9
                         }
+                    }
+
+                    // ── displays ──────────────────────────────
+                    // Resolution, refresh, scale, rotation and order of every
+                    // monitor, saved to hypr/displays.lua (see DisplaysPane).
+                    DisplaysPane {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        visible: !root.searching && root.section === "displays"
+                        active: root.visible && visible
+                        theme: root.theme
+                    }
+
+                    // ── keybinds ──────────────────────────────
+                    // Every Hyprland shortcut, re-bindable; the list itself
+                    // comes from hypr/binds.lua (see KeybindsPane).
+                    KeybindsPane {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        visible: !root.searching && root.section === "keys"
+                        active: root.visible && visible
+                        theme: root.theme
                     }
 
                     // ── sound ─────────────────────────────────

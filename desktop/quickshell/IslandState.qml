@@ -51,7 +51,32 @@ Singleton {
     // with no join link, used to open the card on a monitor named "": nothing
     // rendered, and the island was left half-open so the next pill click
     // toggled it shut instead of showing it.
-    // A monitor's place in the left-to-right order: 0 for the leftmost.
+    // Desktop updates: machines installed from the public repo pull new
+    // versions of this desktop hourly through desktop-sync.timer. Settings →
+    // General shows a switch for it only where that timer exists.
+    property bool syncInstalled: false
+    property bool syncEnabled: false
+    function setDesktopUpdates(on) {
+        Quickshell.execDetached(["systemctl", "--user", on ? "enable" : "disable", "--now", "desktop-sync.timer"]);
+        root.syncEnabled = on;
+        syncCheckLater.restart();
+    }
+    Timer { id: syncCheckLater; interval: 1200; onTriggered: syncCheck.running = true }
+    Process {
+        id: syncCheck
+        running: true
+        command: ["bash", "-c", '[ -f "$HOME/.config/systemd/user/desktop-sync.timer" ] || { echo none; exit 0; }; systemctl --user is-enabled desktop-sync.timer 2>/dev/null || true']
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const t = this.text.trim();
+                root.syncInstalled = t !== "none";
+                root.syncEnabled = t === "enabled";
+            }
+        }
+    }
+
+    // A monitor's place in the left-to-right (then top-to-bottom) order: 0
+    // for the leftmost.
     // The lock screen puts its password field on rank 0, the workspace strip
     // and the SUPER+N keys (hypr/binds.lua) give rank 1 workspaces 11..20.
     // Ranking by position instead of by output name is what lets the same
@@ -64,7 +89,7 @@ Singleton {
         if (!me) return 0;
         let rank = 0;
         for (let i = 0; i < ss.length; i++)
-            if (ss[i].x < me.x) rank++;
+            if (ss[i].x < me.x || (ss[i].x === me.x && ss[i].y < me.y)) rank++;
         return rank;
     }
 
@@ -637,6 +662,14 @@ Singleton {
     // Once at start, for values that equal the defaults (no change signal)
     // and to win over hyprland.lua after a Hyprland reload re-read it.
     Timer { interval: 1500; running: true; onTriggered: root.applyWindowLook() }
+    // A config reload (Super+Ctrl+R, or Settings applying a rebind) re-reads
+    // hyprland.lua's gaps, rounding and frame, so the shell's set goes back on.
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name === "configreloaded") root.applyWindowLook();
+        }
+    }
     readonly property var barLeft: root.barOrder.slice(0, Math.max(0, root.barOrder.indexOf("notch")))
     readonly property var barRight: root.barOrder.slice(root.barOrder.indexOf("notch") + 1)
     function placeBarUnit(id, to) {

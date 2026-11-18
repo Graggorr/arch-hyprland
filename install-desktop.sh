@@ -16,7 +16,11 @@ DE_DIRS=(hypr quickshell rofi wlogout waypaper matugen)
 
 verify_lua() {
     command -v Hyprland >/dev/null 2>&1 || return 0
-    Hyprland --verify-config -c "$1" 2>&1 | grep -q '^config ok'
+    local state rc=0
+    state="$(mktemp -d)"
+    XDG_STATE_HOME="$state" Hyprland --verify-config -c "$1" 2>&1 | grep -q '^config ok' || rc=1
+    rm -rf "$state"
+    return "$rc"
 }
 
 build_desktop() {

@@ -10,6 +10,19 @@ The repo holds configuration only. It contains no accounts, no keys and no
 calendars. Everything that needs a login (Discord, Google, iCloud, Spotify)
 is set up on your own machine with your own credentials and stays there.
 
+![The desktop: menu bar, dynamic island clock and a wallpaper-driven colour scheme](docs/screenshots/desktop.jpg)
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/settings-displays.png" alt="Settings: Displays, with drag-to-arrange monitors and per-monitor resolution, refresh rate, scale and rotation"></td>
+    <td><img src="docs/screenshots/settings-keybinds.png" alt="Settings: Keybinds, every shortcut grouped by app with keybind profiles"></td>
+  </tr>
+  <tr>
+    <td align="center">Settings → Displays</td>
+    <td align="center">Settings → Keybinds</td>
+  </tr>
+</table>
+
 ---
 
 ## Install
@@ -78,9 +91,55 @@ screen.
 | `Alt + '` / `Alt + I` / `Alt + P` | Discord mute / deafen / Go Live |
 | `Alt + Z` | GPU Screen Recorder overlay (record, replay, screenshot; its own hotkey) |
 
-All bindings live in `~/.config/hypr/binds.lua`. Which terminal, browser, file
-manager and mixer they launch is set at the top of
+**Changing a shortcut:** Settings (`Super + S`) → **Keybinds** lists every
+binding under a header per app or module (Apps, Shell, Windows, Workspaces,
+Screenshots, Media, Discord, …). Click a shortcut and press the new keys;
+`Esc` cancels, `Backspace` removes the binding, and the arrow restores the
+default. Two actions on the same keys are flagged in red. The "hold" rows
+(workspace numbers, window drag, scroll) take modifier toggles instead.
+Changes apply immediately and are kept in `~/.local/state/hypr/keybinds.json`,
+outside the synced config, so updates never undo them.
+
+**Profiles:** the bar above the list holds keybind profiles. **Default** is
+the set you start with. **Save as new profile** stores the current set under
+a name (say, "Gaming" with the Discord keys moved), and clicking a profile
+switches every binding at once. Edits always go to the profile that is
+selected; the × on a selected profile deletes it. If the Settings window
+ever closes while recording, `Super + Ctrl + Alt + Shift + Esc` releases the
+keyboard.
+
+The bindings themselves are declared in `~/.config/hypr/binds.lua`. Which
+terminal, browser, file manager and mixer they launch is set at the top of
 `~/.config/hypr/hyprland.lua`.
+
+---
+
+## Displays
+
+Monitors are set up on their own. At first login, and whenever a monitor is
+plugged in or removed, every connected monitor gets:
+
+- its **native resolution at the highest refresh rate** it offers. Not the
+  highest resolution overall, since many panels advertise a downscaled 4K@60.
+- a **scale** from its pixel density: 100% on ordinary desktop monitors, 150%
+  or 200% on HiDPI laptops and 4K panels.
+- a place **left to right**, and its own ten workspaces in that order (the
+  first monitor 1–10, the second 11–20, …).
+
+One monitor, two, a laptop with a dock: each combination gets its own layout,
+and switching between them restores the right one.
+
+To change anything, open **Settings → Displays**:
+
+- **Arrangement:** drag the monitors to where they stand on your desk. They
+  snap edge to edge, so the pointer always crosses between them.
+- **Per monitor:** resolution (the native one is marked), refresh rate,
+  scale, rotation, and an on/off switch.
+- **Apply:** a 15-second "Keep these settings?" countdown follows. If a mode
+  leaves a screen black, just wait and the previous layout comes back.
+
+The layout is saved in `~/.config/hypr/displays.lua`, which you can also edit
+by hand. It belongs to your machine, so updates never touch it.
 
 ---
 
@@ -143,13 +202,52 @@ by URL.
 
 - **Keyboard layouts**: `kb_layout` in `~/.config/hypr/hyprland.lua` (default
   `"us,ua"`, both Ctrl+Shift keys switch).
-- **Monitors**: auto-detected. To arrange several, use `nwg-displays` or edit
-  the `hl.monitor` line.
+- **Monitors**: set up automatically, see [Displays](#displays).
 - **Weather city**: `wxCity` in `~/.config/quickshell/IslandState.qml` (the
   sinoptik.ua city slug, default `kyiv`).
 - **Autostarted apps**: `~/.config/hypr/scripts/workspace-apps.sh`.
 
 Edits like these survive updates (see below).
+
+---
+
+## Make it yours
+
+This desktop is meant to be forked. Two ways to take it over:
+
+**Turn updates off** and change whatever you like. Use **Settings → General
+→ Desktop updates**, or:
+
+```bash
+~/arch-hyprland/update.sh --off      # stop the hourly updater
+~/arch-hyprland/update.sh --status   # is it on, and where does it pull from
+~/arch-hyprland/update.sh --on       # start it again
+```
+
+Or skip the updater at install time with `./install.sh --no-updates`.
+
+**Fork it** to keep your own version in git. Fork the repo on GitHub, then
+point your clone at the fork:
+
+```bash
+git -C ~/arch-hyprland remote set-url origin https://github.com/<you>/arch-hyprland.git
+```
+
+The updater (if you leave it on) pulls from whatever `origin` is, so the
+machine now follows your fork instead of this repo. Edit the files under
+`desktop/`, commit and push to your fork, and every machine you installed
+from it picks the change up within the hour. Paths to your home folder are
+written `@HOME@` in the repo and filled in on each machine, so the same fork
+works for any username. To pull in changes from this
+repo later, add it as a second remote and merge as usual:
+
+```bash
+git -C ~/arch-hyprland remote add upstream https://github.com/Graggorr/arch-hyprland.git
+git -C ~/arch-hyprland pull upstream main
+```
+
+Pushing to your fork needs `gh auth login` (or an SSH key on your GitHub
+account). Pulling does not, because your fork is public.
 
 ---
 

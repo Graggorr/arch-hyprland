@@ -8,7 +8,21 @@ FORCE=0
 case "${1:-}" in
     "")      ;;
     --force) FORCE=1 ;;
-    *) die "usage: update.sh [--force]" ;;
+    --off)
+        systemctl --user disable --now desktop-sync.timer 2>/dev/null || true
+        note "automatic desktop updates are off — your config stays exactly as it is"
+        note "update by hand any time with ./update.sh, or turn them back on with ./update.sh --on"
+        exit 0 ;;
+    --on)
+        [ -f "$HOME/.config/systemd/user/desktop-sync.timer" ] || "$REPO_ROOT/install-sync.sh"
+        systemctl --user enable --now desktop-sync.timer
+        note "automatic desktop updates are on (3 min after login, then hourly) from $(git -C "$REPO_ROOT" remote get-url origin)"
+        exit 0 ;;
+    --status)
+        state="$(systemctl --user is-enabled desktop-sync.timer 2>/dev/null || echo off)"
+        note "automatic updates: $state · source: $(git -C "$REPO_ROOT" remote get-url origin)"
+        exit 0 ;;
+    *) die "usage: update.sh [--force | --off | --on | --status]" ;;
 esac
 
 fail() {

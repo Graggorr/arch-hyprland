@@ -25,9 +25,12 @@ Item {
     // dead weight, and a slot with no glyph falls through to the circle_small
     // dot, which is what made the old trailing ids (9-12 / 19-22) ~144px of
     // decorative nothing per monitor.
-    readonly property var ids: IslandState.screenRank(screenName) > 0
-        ? [11, 12, 13, 14, 15, 16]
-        : [1, 2, 3, 4, 5, 6]
+    // Monitor n (left to right, from 0) owns workspaces n*10+1 .. n*10+10,
+    // the same ranges SUPER+N switches in hypr/binds.lua.
+    readonly property var ids: {
+        const base = IslandState.screenRank(screenName) * 10;
+        return [1, 2, 3, 4, 5, 6].map(i => base + i);
+    }
 
     // Material Design outlines for the generic workspaces, solid brand marks
     // where the workspace *is* one app (Steam, Docker, Discord). Outlines

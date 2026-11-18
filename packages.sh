@@ -89,7 +89,6 @@ PKG_BASE=(
     tela-circle-icon-theme-all
     qt6ct
     nwg-look
-    nwg-displays
     xdg-user-dirs
 
     ttf-jetbrains-mono-nerd
