@@ -188,3 +188,6 @@ later:
 git -C ~/arch-hyprland remote add upstream https://github.com/Graggorr/arch-hyprland.git
 git -C ~/arch-hyprland pull upstream main
 ```
+
+Have an improvement for everyone? Open a pull request here. Each one is
+reviewed and lands on `main` as a single commit.
