@@ -1,21 +1,16 @@
 # arch-hyprland
 
-A complete Hyprland desktop for Arch Linux: a Quickshell bar with a dynamic
-island, a control center, a dock, a lock screen, notifications, a wallpaper-
-driven colour scheme, and the scripts behind them. One command installs it.
-After that a timer keeps the desktop config in step with this repo and merges
-in any edits you made yourself.
-
-The repo holds configuration only. It contains no accounts, no keys and no
-calendars. Everything that needs a login (Discord, Google, iCloud, Spotify)
-is set up on your own machine with your own credentials and stays there.
+A ready-to-use Hyprland desktop for Arch Linux: a menu bar with a dynamic
+island, a control center, a dock, notifications, a lock screen, and a colour
+scheme that follows your wallpaper. It installs with one command and sets
+itself up for your monitors.
 
 ![The desktop: menu bar, dynamic island clock and a wallpaper-driven colour scheme](docs/screenshots/desktop.jpg)
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/settings-displays.png" alt="Settings: Displays, with drag-to-arrange monitors and per-monitor resolution, refresh rate, scale and rotation"></td>
-    <td><img src="docs/screenshots/settings-keybinds.png" alt="Settings: Keybinds, every shortcut grouped by app with keybind profiles"></td>
+    <td><img src="docs/screenshots/settings-displays.png" alt="Settings: Displays"></td>
+    <td><img src="docs/screenshots/settings-keybinds.png" alt="Settings: Keybinds"></td>
   </tr>
   <tr>
     <td align="center">Settings → Displays</td>
@@ -23,11 +18,16 @@ is set up on your own machine with your own credentials and stays there.
   </tr>
 </table>
 
+**What you get:** Brave, Telegram, Discord, Spotify, Claude Desktop, VLC,
+a file manager, screenshots (Flameshot) and screen recording (GPU Screen
+Recorder), plus Steam with gamemode and LibreOffice with printing, both
+optional.
+
 ---
 
 ## Install
 
-On a fresh Arch install, logged in as your normal user (not root):
+On a fresh Arch install, logged in as your normal user:
 
 ```bash
 sudo pacman -S --needed git
@@ -36,271 +36,155 @@ cd ~/arch-hyprland
 ./install.sh
 ```
 
-The repo is public, so cloning over HTTPS needs no GitHub account, SSH key or
-token. The hourly updater fetches the same way.
-
 Options:
 
-```bash
-./install.sh --no-gaming          # skip Steam, gamescope, gamemode, multilib
-./install.sh --no-office          # skip LibreOffice, PDF viewer, printing
-./install.sh desktop dotfiles     # re-run individual steps
-```
+| | |
+|---|---|
+| `./install.sh --no-gaming` | without Steam and the gaming tools |
+| `./install.sh --no-office` | without LibreOffice and printing |
+| `./install.sh --no-updates` | without automatic updates (see [Updates](#updates)) |
 
-The steps run in order: `packages`, `desktop`, `dotfiles`, `system`, `sync`.
-Each is a standalone script and safe to re-run. Before overwriting, they save
-your existing config to `~/.config/.desktop-backups/<timestamp>/`.
-
-When it finishes, log out and pick **Hyprland (uwsm-managed)** at the login
+When it finishes, log out and choose **Hyprland (uwsm-managed)** on the login
 screen.
 
 ---
 
-## What you get
+## First steps
 
-| | |
-|---|---|
-| Desktop | Hyprland, Quickshell bar + dynamic island + control center + dock, rofi as a fallback launcher |
-| Theming | Wallpaper-driven: the bar, GTK, Qt, rofi, the terminal and the lock screen are recoloured from the wallpaper (`Super+W`) |
-| Apps | Brave, Telegram, Discord, Spotify, Claude Desktop, VLC, Nautilus, Loupe, File Roller, pavucontrol, Seahorse, Flameshot, GPU Screen Recorder |
-| Calendar | Google / iCloud calendars and Google Tasks in the island (your own accounts, see below) |
-| Discord | Mute, deafen and Go Live from global hotkeys, even while Discord is unfocused |
-| Gaming | Steam, gamescope, gamemode, MangoHud, multilib |
-| Office | LibreOffice, Papers (PDF), CUPS printing |
-| Shell | fish with oh-my-posh, ghostty, btop, fastfetch, eza |
+- `Super + /` shows every keyboard shortcut.
+- `Super + W` picks a theme and wallpaper; the whole desktop recolours to match.
+- `Super + S` opens Settings.
+- Sign in to the apps you use (Brave, Telegram, Discord, Spotify, Claude).
 
 ---
 
-## Keys
-
-`Super + /` opens the shortcut cheatsheet with every binding. The most used:
+## Everyday keys
 
 | Key | Action |
 |---|---|
 | `Super + Enter` | terminal |
 | `Super + Space` | app launcher |
-| `Super + S` | settings |
-| `Super + W` | theme switcher · `Super+Shift+W` random wallpaper · `Super+Ctrl+W` wallpaper browser |
+| `Super + B` / `Super + E` | browser / files |
 | `Super + V` | clipboard history |
-| `Super + B` / `Super + E` | browser / file manager |
-| `Super + Q` / `F` / `M` / `T` | close / fullscreen / maximize / float |
-| `Super + 1…0` | workspace 1–10 of the focused monitor (a second monitor owns 11–20) |
-| `Super + Shift + 1…0` | move the window there |
-| `Super + L` | lock · `Super + End` log out · `Super + Pause` sleep |
-| `Print` / `Super + Print` | area to clipboard / Flameshot on this monitor |
-| `Alt + '` / `Alt + I` / `Alt + P` | Discord mute / deafen / Go Live |
-| `Alt + Z` | GPU Screen Recorder overlay (record, replay, screenshot; its own hotkey) |
+| `Super + Q` | close window |
+| `Super + F` / `Super + M` / `Super + T` | fullscreen / maximize / float |
+| `Super + 1…0` | switch workspace |
+| `Super + Shift + 1…0` | move the window to a workspace |
+| `Super + L` | lock |
+| `Super + End` | log out |
+| `Print` / `Super + Print` | copy an area / screenshot editor |
+| `Alt + Z` | screen recorder |
+| `Alt + '` / `Alt + I` / `Alt + P` | Discord mute / deafen / go live |
 
-**Changing a shortcut:** Settings (`Super + S`) → **Keybinds** lists every
-binding under a header per app or module (Apps, Shell, Windows, Workspaces,
-Screenshots, Media, Discord, …). Click a shortcut and press the new keys;
-`Esc` cancels, `Backspace` removes the binding, and the arrow restores the
-default. Two actions on the same keys are flagged in red. The "hold" rows
-(workspace numbers, window drag, scroll) take modifier toggles instead.
-Changes apply immediately and are kept in `~/.local/state/hypr/keybinds.json`,
-outside the synced config, so updates never undo them.
-
-**Profiles:** the bar above the list holds keybind profiles. **Default** is
-the set you start with. **Save as new profile** stores the current set under
-a name (say, "Gaming" with the Discord keys moved), and clicking a profile
-switches every binding at once. Edits always go to the profile that is
-selected; the × on a selected profile deletes it. If the Settings window
-ever closes while recording, `Super + Ctrl + Alt + Shift + Esc` releases the
-keyboard.
-
-The bindings themselves are declared in `~/.config/hypr/binds.lua`. Which
-terminal, browser, file manager and mixer they launch is set at the top of
-`~/.config/hypr/hyprland.lua`.
+Each monitor has its own ten workspaces: the left one 1–10, the next 11–20,
+and so on.
 
 ---
 
-## Displays
+## Settings
 
-Monitors are set up on their own. At first login, and whenever a monitor is
-plugged in or removed, every connected monitor gets:
+Open with `Super + S`. Every change applies immediately.
 
-- its **native resolution at the highest refresh rate** it offers. Not the
-  highest resolution overall, since many panels advertise a downscaled 4K@60.
-- a **scale** from its pixel density: 100% on ordinary desktop monitors, 150%
-  or 200% on HiDPI laptops and 4K panels.
-- a place **left to right**, and its own ten workspaces in that order (the
-  first monitor 1–10, the second 11–20, …).
+### Keybinds
 
-One monitor, two, a laptop with a dock: each combination gets its own layout,
-and switching between them restores the right one.
+Every shortcut, grouped by app. Click a shortcut and press the new keys.
 
-To change anything, open **Settings → Displays**:
+- `Esc` cancels, `Backspace` removes the shortcut, and the arrow brings back
+  the original.
+- Two actions on the same keys are marked in red.
+- **Profiles**: **Save as new profile** keeps the current set under a name.
+  Click a profile to switch to it; the × deletes it. **Default** is the set
+  you started with.
 
-- **Arrangement:** drag the monitors to where they stand on your desk. They
-  snap edge to edge, so the pointer always crosses between them.
-- **Per monitor:** resolution (the native one is marked), refresh rate,
-  scale, rotation, and an on/off switch.
-- **Apply:** a 15-second "Keep these settings?" countdown follows. If a mode
-  leaves a screen black, just wait and the previous layout comes back.
+### Displays
 
-The layout is saved in `~/.config/hypr/displays.lua`, which you can also edit
-by hand. It belongs to your machine, so updates never touch it.
+Your monitors are set up automatically, at their best resolution and refresh
+rate, and again whenever you plug one in. To adjust:
+
+- Drag the monitors to match how they stand on your desk.
+- Pick resolution, refresh rate, scale and rotation per monitor, or switch
+  one off.
+- Press **Apply**, then **Keep**. If you don't confirm within 15 seconds (for
+  example because a screen went black), the old settings come back.
+
+### General
+
+Shell style, dock, menu bar, silent mode, clock format and automatic updates.
+The other sections tune the bar, island, dock, fonts, gaps and sound.
 
 ---
 
 ## Discord
 
-The `Discord` launcher this repo installs starts Discord with a local debug
-port (`--remote-debugging-port=9285`). `~/.local/bin/discord-cdp` uses that
-port to press Discord's own Mute, Deafen and Go Live buttons, which works on
-Wayland, where Discord's built-in global keybinds do not. Start Discord from
-the launcher (or the dock) rather than another way, or the port is not open.
+Mute, deafen and go live work from anywhere with the keys above, as long as
+Discord was started from the app launcher or the dock.
 
-- `Alt + '`: Discord mute, or plain microphone mute when Discord is not running
-- `Alt + I`: Discord deafen
-- `Alt + P`: start or stop streaming your leftmost monitor (pick another one
-  with `DISCORD_STREAM_OUTPUT=<output>`; `hyprctl monitors` lists the names)
+To also see your Discord call status in the island, create a free Discord
+application at <https://discord.com/developers/applications> (add
+`http://localhost` as an OAuth2 redirect), then run:
 
-**Optional: call status in the island.** The island can show your Discord mute
-and deafen state through Discord's RPC socket. That needs a Discord
-application of your own (it takes a minute and it's free):
-
-1. <https://discord.com/developers/applications> → New Application.
-   Under OAuth2, add the redirect `http://localhost`.
-2. Write its Application ID into the config, and store its Client Secret in
-   your keyring:
-   ```bash
-   echo '{"client_id":"<your application id>"}' > ~/.config/quickshell/discord-rpc.json
-   secret-tool store --label='Discord RPC' service discord-rpc key client_secret
-   python3 ~/.config/quickshell/scripts/discord-rpc.py auth
-   ```
-3. Approve the popup in Discord. The token is stored in
-   `~/.local/state/quickshell/` and refreshed automatically.
+```bash
+echo '{"client_id":"<your application id>"}' > ~/.config/quickshell/discord-rpc.json
+secret-tool store --label='Discord RPC' service discord-rpc key client_secret   # paste the client secret
+python3 ~/.config/quickshell/scripts/discord-rpc.py auth                        # approve in Discord
+```
 
 ---
 
 ## Calendar
 
-The island's calendar reads your own calendars from local copies that
-`vdirsyncer` keeps in sync: Google Calendar, iCloud Calendar and Google Tasks.
-Nothing is connected until you run the guided setup:
+The island shows your Google or iCloud calendar and Google Tasks. To connect
+your accounts, run the guided setup and turn on syncing:
 
 ```bash
 calendar-setup
-```
-
-It walks you through creating your own Google OAuth app (the console steps
-are spelled out in the terminal) and an iCloud app-specific password. Every
-credential goes into your login keyring, never into a file in this repo.
-Then turn on background sync:
-
-```bash
 systemctl --user enable --now vdirsyncer.timer
 ```
 
-`calendar-subscribe` adds read-only feeds (sports schedules, public holidays)
-by URL.
+`calendar-subscribe` adds public calendars by URL (holidays, sports).
 
 ---
 
-## Things to change by hand
+## Personal touches
 
-- **Keyboard layouts**: `kb_layout` in `~/.config/hypr/hyprland.lua` (default
-  `"us,ua"`, both Ctrl+Shift keys switch).
-- **Monitors**: set up automatically, see [Displays](#displays).
-- **Weather city**: `wxCity` in `~/.config/quickshell/IslandState.qml` (the
-  sinoptik.ua city slug, default `kyiv`).
-- **Autostarted apps**: `~/.config/hypr/scripts/workspace-apps.sh`.
+- **Keyboard layouts:** `kb_layout` in `~/.config/hypr/hyprland.lua`
+  (default `"us,ua"`, switch with Ctrl + Shift).
+- **Weather city:** `wxCity` in `~/.config/quickshell/IslandState.qml`
+  (default `kyiv`).
+- **Apps that start at login:** `~/.config/hypr/scripts/workspace-apps.sh`.
 
-Edits like these survive updates (see below).
+Your changes are kept when the desktop updates.
 
 ---
 
-## Make it yours
+## Updates
 
-This desktop is meant to be forked. Two ways to take it over:
+The desktop checks this repo for improvements every hour and applies them
+without touching your own changes. Apps update with the system (`yay -Syu`).
 
-**Turn updates off** and change whatever you like. Use **Settings → General
-→ Desktop updates**, or:
+Turn updates off in **Settings → General → Desktop updates**, or:
 
 ```bash
-~/arch-hyprland/update.sh --off      # stop the hourly updater
-~/arch-hyprland/update.sh --status   # is it on, and where does it pull from
-~/arch-hyprland/update.sh --on       # start it again
+~/arch-hyprland/update.sh --off      # stop automatic updates
+~/arch-hyprland/update.sh --on       # start them again
+~/arch-hyprland/update.sh            # update right now
 ```
 
-Or skip the updater at install time with `./install.sh --no-updates`.
+---
 
-**Fork it** to keep your own version in git. Fork the repo on GitHub, then
-point your clone at the fork:
+## Make it your own
+
+Fork this repo on GitHub and point your copy at the fork:
 
 ```bash
 git -C ~/arch-hyprland remote set-url origin https://github.com/<you>/arch-hyprland.git
 ```
 
-The updater (if you leave it on) pulls from whatever `origin` is, so the
-machine now follows your fork instead of this repo. Edit the files under
-`desktop/`, commit and push to your fork, and every machine you installed
-from it picks the change up within the hour. Paths to your home folder are
-written `@HOME@` in the repo and filled in on each machine, so the same fork
-works for any username. To pull in changes from this
-repo later, add it as a second remote and merge as usual:
+Updates then come from your fork: change files under `desktop/`, push, and
+every machine installed from it follows. To pull in improvements from here
+later:
 
 ```bash
 git -C ~/arch-hyprland remote add upstream https://github.com/Graggorr/arch-hyprland.git
 git -C ~/arch-hyprland pull upstream main
 ```
-
-Pushing to your fork needs `gh auth login` (or an SSH key on your GitHub
-account). Pulling does not, because your fork is public.
-
----
-
-## Keeping it updated
-
-Apps are installed once and update with the system (`yay -Syu`). The desktop
-config (`~/.config/{hypr,quickshell,rofi,wlogout,waypaper,matugen}`) keeps
-following this repo:
-
-```
-repo push ──> desktop-sync.timer ──> update.sh ──> install-desktop.sh --update
-              (3 min after login,    git pull      build, then patch ~/.config
-               then hourly)          --ff-only
-```
-
-Each update is first built into a scratch directory and checked with
-`Hyprland --verify-config`, and only then patched in. A commit that fails the
-check changes nothing on your machine and raises a "Desktop update failed"
-notification.
-
-The patch is a three-way merge against the version applied last time
-(`~/.local/state/desktop-sync/base`):
-
-| The repo changed the file | You changed the file | Result |
-|---|---|---|
-| no | — | left exactly as it is |
-| yes | no | replaced with the repo version |
-| yes | yes | merged; your edit and the repo's both survive |
-| yes | yes, same lines | repo version wins; yours is saved in `~/.config/.desktop-backups/<timestamp>-update/` |
-| deleted | no | deleted |
-
-Files the desktop writes for itself (palettes, the chosen wallpaper and theme)
-are never touched. Afterwards Hyprland is reloaded, and the shell restarts if
-its files changed. While the screen is locked the restart waits until the next
-run.
-
-```bash
-~/arch-hyprland/update.sh            # pull and patch now
-~/arch-hyprland/update.sh --force    # rebuild and patch even with no new commit
-journalctl --user -u desktop-sync    # what the timer did
-```
-
-`~/.local/bin` scripts and other dotfiles are installed once. To pick up newer
-versions, run `./install.sh dotfiles` (it backs up anything it replaces).
-
----
-
-## What is deliberately not installed
-
-- **No git identity, SSH keys or `~/.gitconfig`**: those are yours to set.
-- **No autologin**: logging in at SDDM lets PAM unlock your keyring, so stored
-  passwords work without a prompt.
-- **No fstab, bootloader, initramfs or Secure Boot changes**:
-  `install-system.sh` only touches portable things (locale, udev rules for
-  CPU power readings, systemd-oomd, gamemode) and enables NetworkManager,
-  Bluetooth and SDDM.
