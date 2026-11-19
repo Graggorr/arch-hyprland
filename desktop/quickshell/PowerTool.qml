@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import Quickshell.Services.UPower
 
@@ -21,23 +22,21 @@ Item {
     property string mode: "session"   // "session" | "idle"
     property string selected: ""
 
-    // Lock and logout must not be detached: the locker has to stay a child of
-    // the session, and `uwsm stop` tears the session down anyway. The session
-    // is uwsm-managed, so logout goes through uwsm rather than hl.dsp.exit() —
-    // exiting the compositor directly pulls it out from under its own clients
+    // The session is uwsm-managed, so logout goes through uwsm rather than
+    // hl.dsp.exit(), which pulls the compositor out from under its own clients
     // and skips the ordered shutdown. Windows boots through the firmware's
     // one-shot BootNext, so the boot after it comes back here.
     readonly property var actions: [
         { key: "lock",     glyph: "\u{f033e}", name: "Lock",     ring: 1, ang: -90,
-          cmd: ["qs", "ipc", "call", "lock", "lock"], detach: false },
+          cmd: ["qs", "ipc", "call", "lock", "lock"] },
         { key: "suspend",  glyph: "\u{f04b2}", name: "Suspend",  ring: 1, ang: 20,
-          cmd: ["systemctl", "suspend"], detach: true },
+          cmd: ["systemctl", "suspend"] },
         { key: "logout",   glyph: "\u{f0343}", name: "Logout",   ring: 1, ang: 160,
-          cmd: ["uwsm", "stop"], detach: false },
+          cmd: ["uwsm", "stop"] },
         { key: "reboot",   glyph: "\u{f0709}", name: "Reboot",   ring: 2, ang: -150,
-          cmd: ["systemctl", "reboot"], detach: true, danger: true },
+          cmd: ["systemctl", "reboot"], danger: true },
         { key: "shutdown", glyph: "\u{f0425}", name: "Shutdown", ring: 2, ang: -30,
-          cmd: ["systemctl", "poweroff"], detach: true, danger: true },
+          cmd: ["systemctl", "poweroff"], danger: true },
     ]
     readonly property var idleModes: [
         { key: "sleep", glyph: "\u{f04b2}", name: "Sleep",       sub: "suspend",    ring: 1, ang: -90 },
@@ -75,14 +74,14 @@ Item {
     // An armed shutdown left alone should not stay one click from firing.
     Timer { id: selReset; interval: 8000; onTriggered: root.selected = "" }
 
-    Process { id: runner }
+    // Spawned detached and before the card closes: closing the card unloads
+    // this panel, and a Process child dies with the object that owns it.
     function act() {
         const a = root.sel;
         if (!a) return;
         root.selected = "";
+        Quickshell.execDetached(a.cmd);
         IslandState.closeCard();
-        runner.command = a.detach ? ["setsid", "-f"].concat(a.cmd) : a.cmd;
-        runner.running = true;
     }
 
     function cycleProfile() {
