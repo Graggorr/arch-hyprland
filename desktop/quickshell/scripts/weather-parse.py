@@ -72,7 +72,7 @@ def decode(code, night=False):
         if kind == 3:
             return "Snow", "", "#e6f0ff"
         if kind == 2:
-            return "Sleet", "", "#a9d6ec"
+            return "Sleet", "", "#a9d6ec"
         return ("Heavy rain" if precip >= 3 else "Rain"), \
                ("" if night else ""), "#74c7ec"
     return label, (night_g if night else day_g), (night_h if night else day_h)
