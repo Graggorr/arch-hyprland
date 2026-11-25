@@ -152,7 +152,8 @@ Singleton {
         { id: "capture",  glyph: "\u{f0d19}", name: "Capture" },
         { id: "timer",    glyph: "\u{f051b}", name: "Timer" },
         { id: "call",     glyph: "\u{f03f6}", name: "Call", needs: "call" },
-        { id: "power",    glyph: "\u{f0425}", name: "Power" }
+        { id: "power",    glyph: "\u{f0425}", name: "Power" },
+        { id: "station",  glyph: "\u{f1901}", name: "Power station" }
     ]
     function toolInfo(id) {
         for (let i = 0; i < root.tools.length; i++)
@@ -242,6 +243,10 @@ Singleton {
             property bool phoneCircle: true
             // A circle per connected controller, in its own colour.
             property bool controllerCircle: true
+            // The Oukitel power station, while the oukitel daemon reaches it.
+            property bool stationCircle: true
+            // The mouse, from UPower (hidpp), while it reports a charge.
+            property bool mouseCircle: true
             // The tray strip at the right end of the top bar. The island's
             // tray tool stays either way; this only adds the always-visible row.
             property bool topTray: true
@@ -360,10 +365,18 @@ Singleton {
             property int morphMs: 340
             property int statusWarnPct: 20
             property string statusClick: "battery"
+            // The Oukitel power station (Settings → Power station).
+            property bool stationAlert: true
+            property int stationFlowMax: 2400
+            property int stationCapacityWh: 2048
             property bool dock: true
             // The dock's pinned apps, as desktop entry ids in display order.
             // Shared by every monitor's dock, edited by dragging on the dock.
             property var dockPinned: []
+            // Settings → Displays: screens go dark after this many seconds
+            // without pointer or keyboard input.
+            property bool screenOff: false
+            property int screenOffSecs: 600
             // Which shape sits at the top centre: the floating "island" pill
             // or the "notch" welded to the screen edge. Each mode keeps its
             // own look profile — the island's lives in this file, the notch's
@@ -417,6 +430,8 @@ Singleton {
             property bool airpodsCircle: true
             property bool phoneCircle: true
             property bool controllerCircle: true
+            property bool stationCircle: true
+            property bool mouseCircle: true
             property bool topTray: false
             property bool menuBar: true
             property string artStyle: "circle"
@@ -576,17 +591,20 @@ Singleton {
         { id: "media",     name: "Now playing",    glyph: "\u{f0387}", hint: "Cover, track and live bars · click opens the player · middle-click pauses" },
         { id: "weather",   name: "Weather",        glyph: "\u{f0595}", hint: "Conditions and temperature · click opens the forecast" },
         { id: "monitor",   name: "Monitoring",     glyph: "\u{f029a}", hint: "CPU, RAM and GPU load · click opens monitoring" },
+        { id: "stationflow", name: "Station power", glyph: "\u{f140b}", hint: "Input and output watts as two live bars · click opens the power station" },
         { id: "tray",      name: "Tray",           glyph: "\u{f1294}", hint: "App tray icons" },
         { id: "network",   name: "Network",        glyph: "\u{f06f3}", hint: "Opens Wi-Fi / network · right-click cycles VPN" },
         { id: "bluetooth", name: "Bluetooth",      glyph: "\u{f00af}", hint: "Opens Bluetooth · right-click turns it on or off" },
-        { id: "devices",   name: "Devices",        glyph: "\u{f184f}", hint: "AirPods, phone and controller charge while connected · follows the toggles in Settings → Devices · click opens batteries" },
+        { id: "devices",   name: "Devices",        glyph: "\u{f184f}", hint: "AirPods, phone, mouse, controller and power station charge while connected · follows the toggles in Settings → Devices · click opens batteries" },
         { id: "sound",     name: "Sound",          glyph: "\u{f057e}", hint: "Opens sound · scroll for volume · right-click mutes" },
         { id: "layout",    name: "Keyboard",       glyph: "\u{f030c}", hint: "Keyboard layout · click switches" },
         { id: "notifs",    name: "Notifications",  glyph: "\u{f009a}", hint: "Unread count and silent mode · click opens notifications" },
         { id: "hub",       name: "Control Center", glyph: "\u{f1542}", hint: "Opens the Control Center" },
         { id: "clock",     name: "Date & time",    glyph: "\u{f0150}", hint: "Opens the calendar" }
     ]
-    readonly property var barDefault: root.barUnits.map(u => u.id)
+    // The station's bar item exists only where the oukitel daemon runs.
+    readonly property var barDefault: root.barUnits
+        .filter(u => u.id !== "stationflow" || root.stationKnown).map(u => u.id)
     function barUnit(id) {
         for (const u of root.barUnits) if (u.id === id) return u;
         return { id: id, name: id, glyph: "?", hint: "" };
@@ -693,7 +711,7 @@ Singleton {
     // The adapter the per-mode keys are read from and written to.
     readonly property var profile: root.notch ? notchPrefs : prefs
     readonly property var perModeKeys: [
-        "statusCircle", "airpodsCircle", "phoneCircle", "controllerCircle", "topTray", "menuBar",
+        "statusCircle", "airpodsCircle", "phoneCircle", "controllerCircle", "stationCircle", "mouseCircle", "topTray", "menuBar",
         "artStyle", "liveBars", "pillLayout", "pillHidden",
         "revealSeconds", "revealUtc", "revealWeather", "revealWorkspaces", "revealDate",
         "alwaysSeconds", "alwaysUtc", "alwaysWeather", "alwaysWorkspaces", "alwaysDate",
@@ -724,6 +742,14 @@ Singleton {
     // profile and a shared one in the shared file.
     function setPref(key, value) {
         if (key === "dnd") { prefs.dnd = value; return; }
+        // Not a pref: the live power-profiles-daemon setting, offered as a
+        // Settings row so it stays reachable whatever the Control Center holds.
+        if (key === "powerProfile") {
+            PowerProfiles.profile = value === "saver" ? PowerProfile.PowerSaver
+                : value === "performance" && PowerProfiles.hasPerformanceProfile ? PowerProfile.Performance
+                : PowerProfile.Balanced;
+            return;
+        }
         if (root.profile.menuBar && root.barShapeKeys.indexOf(key) >= 0) {
             const o = Object.assign({}, prefs.barShape || {});
             o[root.shapeKey(key)] = value;
@@ -851,8 +877,15 @@ Singleton {
         readonly property var ccPresets: prefs.ccPresets
         readonly property int statusWarnPct: prefs.statusWarnPct
         readonly property string statusClick: prefs.statusClick
+        readonly property string powerProfile: PowerProfiles.profile === PowerProfile.PowerSaver ? "saver"
+            : PowerProfiles.profile === PowerProfile.Performance ? "performance" : "balanced"
+        readonly property bool stationAlert: prefs.stationAlert
+        readonly property int stationFlowMax: prefs.stationFlowMax
+        readonly property int stationCapacityWh: prefs.stationCapacityWh
         readonly property bool dock: prefs.dock
         readonly property var dockPinned: prefs.dockPinned
+        readonly property bool screenOff: prefs.screenOff
+        readonly property int screenOffSecs: prefs.screenOffSecs
         // per mode
         // The Control Center grid is one layout for island, notch and menu bar.
         readonly property int ccColumns: prefs.ccColumns
@@ -860,6 +893,8 @@ Singleton {
         readonly property bool statusCircle: root.profile.statusCircle
         readonly property bool airpodsCircle: root.profile.airpodsCircle
         readonly property bool phoneCircle: root.profile.phoneCircle
+        readonly property bool stationCircle: root.profile.stationCircle
+        readonly property bool mouseCircle: root.profile.mouseCircle
         readonly property bool controllerCircle: root.profile.controllerCircle
         readonly property bool topTray: root.profile.topTray
         readonly property bool menuBar: root.profile.menuBar
@@ -1754,7 +1789,7 @@ Singleton {
         { id: "slack", name: "Slack", re: /slack/i,
           glyph: "\u{f04b1}" },
         { id: "discord", name: "Discord", re: /discord|vesktop|webcord|armcord/i,
-          glyph: "\u{f066f}" }
+          glyph: "\u{f1ff}" }
     ]
 
     // Matched across every identity the stream carries rather than
@@ -2492,6 +2527,51 @@ Singleton {
         idleSet.running = true;
     }
 
+    // ── screens off ───────────────────────────────────────────────
+    // Settings → Displays. The compositor reports the seat idle once no
+    // pointer or key input arrived for screenOffSecs; the screens go dark
+    // unless audio plays or a window inhibits idle (idle-media-guard), in
+    // which case it asks again every 30 s. Any input wakes them.
+    property bool screensDark: false
+    property bool screenIsIdle: false
+    // An IdleMonitor keeps the timeout it was created with and ignores later
+    // changes, so a new timeout means a new monitor (Variants rebuilds it; a
+    // Loader in this singleton never instantiates). It is enabled only once
+    // complete: enabled before timeout is set reports idle at once.
+    readonly property int screenOffTimeout: root.cfg.screenOff ? Math.max(5, root.cfg.screenOffSecs) : 0
+    onScreenOffTimeoutChanged: if (root.screenIsIdle) root.screenIdleChanged(false)
+    Variants {
+        model: root.screenOffTimeout > 0 ? [root.screenOffTimeout] : []
+        IdleMonitor {
+            required property var modelData
+            timeout: modelData
+            respectInhibitors: false
+            enabled: false
+            Component.onCompleted: enabled = true
+            onIsIdleChanged: root.screenIdleChanged(isIdle)
+        }
+    }
+    function screenIdleChanged(idle) {
+        root.screenIsIdle = idle;
+        if (idle) { screenGuard.running = true; return; }
+        screenRetry.stop();
+        if (root.screensDark) {
+            root.screensDark = false;
+            Quickshell.execDetached(["hyprctl", "dispatch", 'hl.dsp.dpms({ action = "on" })']);
+        }
+    }
+    Process {
+        id: screenGuard
+        command: ["@HOME@/.local/bin/idle-media-guard"]
+        onExited: code => {
+            if (!root.screenIsIdle) return;
+            if (code !== 0) { screenRetry.restart(); return; }
+            root.screensDark = true;
+            Quickshell.execDetached(["hyprctl", "dispatch", 'hl.dsp.dpms({ action = "off" })']);
+        }
+    }
+    Timer { id: screenRetry; interval: 30000; onTriggered: if (root.screenIsIdle) screenGuard.running = true }
+
     // ── keyboard layout ───────────────────────────────────────────
     // Event-driven, not polled: Hyprland pushes `activelayout` the instant the
     // layout changes. This used to live in KbLayoutPill with a socat listener
@@ -2858,6 +2938,192 @@ Singleton {
     readonly property bool airpodsConnected: root.airpodsDev !== null && root.airpodsDev.connected
     property var airData: null
     property real devNow: Date.now()
+
+    // ── night light ───────────────────────────────────────────────
+    // hyprsunset, started and stopped by the switch (nothing runs it at
+    // login). The Control Center tile and the Displays panel share this.
+    property bool nightOn: false
+    property int nightTemp: 4500
+    Process {
+        id: nightCheck
+        command: ["pgrep", "-x", "hyprsunset"]
+        stdout: StdioCollector { onStreamFinished: root.nightOn = this.text.trim() !== "" }
+    }
+    Process { id: nightCtl }
+    function checkNight() { nightCheck.running = true; }
+    function toggleNight() {
+        nightCtl.command = root.nightOn ? ["pkill", "-x", "hyprsunset"]
+                                        : ["setsid", "-f", "hyprsunset", "-t", String(root.nightTemp)];
+        root.nightOn = !root.nightOn;
+        nightCtl.running = true;
+    }
+    onCardOpenChanged: if (root.cardOpen) root.checkNight()
+
+    // ── every battery-powered device, one list ────────────────────
+    // What the menu bar's Devices item and the Control Center's Devices
+    // widget both draw, so the two can never disagree. `pref` is the
+    // Settings → Devices toggle that governs the device's circle and bar
+    // spot; `tool` is the panel a click opens — the device's own where it
+    // has one, Batteries (the devices panel) otherwise. The station is
+    // coloured by level alone: it lives on mains, so charging is its normal
+    // state.
+    readonly property var devices: {
+        const out = [];
+        if (root.airpodsConnected)
+            out.push({ key: "airpods", kind: "airpods", body: "", name: "AirPods", pref: "airpodsCircle",
+                       pct: root.airpodsPct, charging: root.airpodsCharging, tool: "battery" });
+        if (root.phoneConnected)
+            out.push({ key: "phone", kind: root.phoneKind, body: "", name: "Phone", pref: "phoneCircle",
+                       pct: root.phonePct, charging: root.phoneCharging, tool: "battery" });
+        if (root.mouseConnected)
+            out.push({ key: "mouse", kind: "mouse", body: "", name: root.mouseDev.model || "Mouse", pref: "mouseCircle",
+                       pct: root.mousePct, charging: root.mouseCharging, tool: "battery" });
+        for (const c of root.controllers)
+            out.push({ key: c.key, kind: c.kind, body: c.tint, name: c.name, pref: "controllerCircle",
+                       pct: c.pct, charging: c.charging, tool: "battery" });
+        if (root.stationOnline)
+            out.push({ key: "station", kind: "station", body: "", name: "Power station", pref: "stationCircle",
+                       pct: root.stationFrac, charging: false, tool: "station" });
+        return out;
+    }
+
+    // ── the mouse ─────────────────────────────────────────────────
+    // The same probe as the status circle, mouse only: hidpp batteries sit
+    // in UPower, reactive, nothing to poll. An asleep receiver surfaces a
+    // ghost pinned to zero, which is not a reading.
+    // UPower files the PRO X Superlight 2 under Keyboard (its HID++ report
+    // says so), so a Logitech HID++ battery counts when no device is typed
+    // Mouse.
+    readonly property var mouseDev: {
+        const list = UPower.devices.values;
+        let hidpp = null;
+        for (let i = 0; i < list.length; i++) {
+            const d = list[i];
+            if (!d.ready || d.isLaptopBattery || !(d.percentage > 0)) continue;
+            if (d.type === UPowerDeviceType.Mouse) return d;
+            if (hidpp === null && /hidpp_battery/.test(d.nativePath || "")) hidpp = d;
+        }
+        return hidpp;
+    }
+    readonly property bool mouseConnected: root.mouseDev !== null
+    readonly property real mousePct: root.mouseDev ? root.mouseDev.percentage : -1
+    readonly property bool mouseCharging: root.mouseDev !== null && root.mouseDev.state === UPowerDeviceState.Charging
+
+    // ── the Oukitel power station ─────────────────────────────────
+    // ~/.local/bin/oukitel's daemon holds the LAN session and rewrites this
+    // file in place on every telemetry burst; everything here only reads it.
+    // Absent file = no station on this machine, and every station surface
+    // (bar items, Batteries row, panel) stays out of the way.
+    property var station: ({})
+    property bool stationKnown: false
+    FileView {
+        id: stationFile
+        path: Quickshell.env("XDG_RUNTIME_DIR") + "/oukitel/state.json"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: {
+            try { root.station = JSON.parse(text()); root.stationKnown = true; } catch (e) { }
+        }
+        onLoadFailed: root.stationKnown = false
+    }
+    property real stationNow: Date.now()
+    Timer {
+        interval: 5000
+        running: true
+        repeat: true
+        onTriggered: { root.stationNow = Date.now(); stationFile.reload(); }
+    }
+    // A dead daemon leaves its last file behind, so a reading older than two
+    // minutes counts as offline rather than as the station's current state.
+    readonly property bool stationOnline: root.stationKnown && root.station.connected === true
+        && (root.stationNow / 1000 - (root.station.updated || 0)) < 120
+    readonly property int stationPct: root.station.battery !== undefined ? Math.round(root.station.battery) : -1
+    // The 0–1 charge every other device carries, -1 while unreachable.
+    readonly property real stationFrac: root.stationOnline && root.stationPct >= 0 ? root.stationPct / 100 : -1
+    readonly property real stationIn: root.station.input_w || 0
+    readonly property real stationOut: root.station.output_w || 0
+    readonly property real stationAcIn: root.station.ac_in_w || 0
+    readonly property real stationDcIn: root.station.dc_in_w || 0
+    // Charging means energy flowing into the cells: the AC/DC charge inputs,
+    // not total input, which also counts what passes straight through to the
+    // outlets.
+    // The station lives on mains, so "charging" is its normal state: every
+    // surface colours it by level alone (batteryColor with charging false)
+    // and leaves charging to the status text.
+    // Held at the charge limit the station still trickles ~90 W in (its
+    // floor), but that is the limit working, not charging.
+    readonly property bool stationHolding: root.stationOnline && root.station.holding === true
+    readonly property bool stationCharging: root.stationOnline && !root.stationHolding
+        && (root.stationAcIn + root.stationDcIn) > 5
+    readonly property bool stationOnBattery: root.stationOnline && !root.stationCharging && root.stationOut > 0
+        && root.stationIn < root.stationOut
+    readonly property bool stationLow: root.stationOnline && root.stationPct >= 0
+        && root.stationPct <= root.cfg.statusWarnPct
+    function stationHm(mins) {
+        if (mins === undefined || mins === null || mins <= 0) return "";
+        const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+        return (h > 0 ? h + "h " : "") + m + "m";
+    }
+    // Mains passing straight through to the outlets with no charging: the
+    // station is acting as a UPS, and the battery is the backup.
+    readonly property bool stationUps: root.stationOnline && !root.stationCharging && !root.stationHolding
+        && root.stationIn > 5 && !root.stationOnBattery
+    // Minutes the battery would carry the current load. The firmware's own
+    // figure is only real while discharging (it reports 5940 = 99 h
+    // otherwise), so pass-through and hold use an estimate from capacity,
+    // charge and output with ~90 % inverter efficiency.
+    readonly property real stationRuntimeMin: {
+        if (!root.stationOnline || root.stationPct < 0 || root.stationOut < 5) return -1;
+        const fw = root.station.remain_min || 0;
+        if (root.stationOnBattery && fw > 0 && fw < 5940) return fw;
+        return root.cfg.stationCapacityWh * root.stationPct / 100 * 0.9 / root.stationOut * 60;
+    }
+    readonly property string stationRuntime: root.stationCharging ? "" : root.stationHm(root.stationRuntimeMin)
+    readonly property string stationStatus: {
+        if (!root.stationKnown) return "";
+        if (!root.stationOnline) return root.station.error ? "Offline · " + root.station.error : "Offline";
+        const rt = root.stationRuntime;
+        if (root.stationHolding)
+            return "Held at the " + root.station.charge_target + "% limit" + (rt ? " · backup " + rt : "");
+        if (root.stationCharging) {
+            const t = root.stationHm(root.station.charge_remain_min < 5940 ? root.station.charge_remain_min : 0);
+            return "Charging" + (t ? " · full in " + t : "");
+        }
+        if (root.stationOnBattery) return "On battery" + (rt ? " · " + rt + " left" : "");
+        if (root.stationUps) return "UPS mode" + (rt ? " · backup " + rt : "");
+        if (root.stationOut > 0) return "Idle" + (rt ? " · " + rt + " left" : "");
+        return "Idle";
+    }
+    // Low and draining: one notification per dip (re-armed once the charge
+    // recovers past the threshold or charging resumes) plus the pill's lead
+    // alert for as long as it lasts. This machine runs off the station, so
+    // the warning is about the PC, not a gadget.
+    property bool stationWarned: false
+    readonly property bool stationDraining: root.stationLow && !root.stationCharging
+    onStationDrainingChanged: {
+        if (!root.cfg.stationAlert) { root.retract("station"); return; }
+        if (root.stationDraining) {
+            root.publish("station", {
+                slot: "lead", priority: 35,
+                title: "Station " + root.stationPct + "%",
+                sub: root.stationStatus,
+                tone: "warn", progress: -1,
+                action: function () { root.openTool("station", root.activeScreen()); }
+            });
+            if (!root.stationWarned) {
+                root.stationWarned = true;
+                Quickshell.execDetached(["notify-send", "-u", "critical", "-a", "Power station",
+                    "Power station at " + root.stationPct + "%",
+                    "Not charging · " + root.stationStatus + ". This PC runs off it."]);
+            }
+        } else {
+            root.retract("station");
+        }
+    }
+    onStationPctChanged: {
+        if (root.stationPct > root.cfg.statusWarnPct + 5 || root.stationCharging) root.stationWarned = false;
+    }
     FileView {
         id: airFile
         path: "/tmp/airstatus.out"

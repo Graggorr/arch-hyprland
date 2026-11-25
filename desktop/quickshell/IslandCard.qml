@@ -187,6 +187,7 @@ PopupWindow {
             case "timer":    return "TimerTool.qml";
             case "call":     return "CallTool.qml";
             case "power":    return "PowerTool.qml";
+            case "station":  return "StationTool.qml";
         }
         return "";
     }

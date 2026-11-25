@@ -7,7 +7,8 @@ import Quickshell.Services.UPower
 // middle as an orb and what can be done to it floats around it. The switch
 // along the bottom flips between Session (lock, logout, suspend near the
 // orb; reboot, shutdown and Windows on the outer ring, since they end the
-// session) and Idle (what happens after an hour alone). A session action is
+// session) and Idle (sleep after an hour alone, or never; turning the
+// screens off is a Settings → Displays timer of its own). A session action is
 // two clicks — pick the chip, then press the orb or the action chip
 // bottom-left — so a stray click never takes the machine down. The round
 // button bottom-right cycles the power profile.
@@ -39,9 +40,8 @@ Item {
           cmd: ["systemctl", "poweroff"], danger: true },
     ]
     readonly property var idleModes: [
-        { key: "sleep", glyph: "\u{f04b2}", name: "Sleep",       sub: "suspend",    ring: 1, ang: -90 },
-        { key: "dpms",  glyph: "\u{f0379}", name: "Screens off", sub: "stay awake", ring: 1, ang: 20 },
-        { key: "off",   glyph: "\u{f0904}", name: "Disabled",    sub: "never idle", ring: 1, ang: 160 }
+        { key: "sleep", glyph: "\u{f04b2}", name: "Sleep",       sub: "suspend",    ring: 1, ang: -160 },
+        { key: "off",   glyph: "\u{f0904}", name: "Disabled",    sub: "never idle", ring: 1, ang: -20 }
     ]
 
     readonly property var nodes: {

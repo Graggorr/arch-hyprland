@@ -31,7 +31,8 @@ writes the user's choices with --apply (the previous file is kept), and
 calls --revert when a change is not confirmed in time.
 
 Usage:
-  monitors.py --auto     only act when the connected set changed (login, hotplug)
+  monitors.py --auto     only act when the connected set changed (login, hotplug);
+                         always puts stray workspaces back on their own monitor
   monitors.py --write    regenerate for the current set, keeping nothing
   monitors.py --json     print the connected monitors and every mode they offer
   monitors.py --apply    write the layout given as JSON on stdin:
@@ -50,6 +51,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HOME = Path.home()
@@ -71,6 +73,65 @@ def hypr_monitors() -> list[dict]:
     except json.JSONDecodeError:
         return []
     return [m for m in mons if m.get("name") and not str(m.get("name")).startswith("HEADLESS")]
+
+
+WS_PER_MONITOR = 10
+
+
+def dispatch(lua: str) -> None:
+    subprocess.run(["hyprctl", "dispatch", lua], capture_output=True, check=False)
+
+
+def place_workspaces() -> None:
+    """Move every workspace back to the monitor that owns its range.
+
+    Workspace rules only act when a workspace is created. When monitors
+    drop off the bus (DisplayPort panels do on DPMS off) and come back one
+    by one, the workspaces gather on whichever monitor returned first and
+    stay there under the restored rules. hl.dsp.workspace.move only moves
+    the focused workspace, so each stray one is focused, moved, and then
+    every monitor gets its own workspace back on screen. A returning monitor
+    is still settling when monitor.added fires, so it waits a moment first.
+    Every move is logged to ~/.local/state/hypr/monitors.log.
+    """
+    time.sleep(1.0)
+    out = subprocess.run(["hyprctl", "monitors", "-j"], capture_output=True, text=True, timeout=10)
+    wss = subprocess.run(["hyprctl", "workspaces", "-j"], capture_output=True, text=True, timeout=10)
+    try:
+        mons = [m for m in json.loads(out.stdout)
+                if not m.get("disabled") and not str(m.get("name", "")).startswith("HEADLESS")
+                and m.get("mirrorOf", "none") in ("none", "", None)]
+        workspaces = json.loads(wss.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return
+    if not mons:
+        return
+    mons.sort(key=lambda m: (m.get("x", 0), m.get("y", 0)))
+    owner = {}
+    for rank, m in enumerate(mons):
+        for i in range(1, WS_PER_MONITOR + 1):
+            owner[rank * WS_PER_MONITOR + i] = m["name"]
+    stray = [w for w in workspaces
+             if w.get("id", 0) > 0 and w["id"] in owner and owner[w["id"]] != w.get("monitor")]
+    if not stray:
+        return
+
+    with open(STATE / "monitors.log", "a") as log:
+        log.write(time.strftime("%Y-%m-%d %H:%M:%S ") + "moved back: "
+                  + ", ".join(f'{w["id"]} {w.get("monitor")}->{owner[w["id"]]}' for w in stray) + "\n")
+    shown = {m["name"]: (m.get("activeWorkspace") or {}).get("id", 0) for m in mons}
+    focused = next((m["name"] for m in mons if m.get("focused")), mons[0]["name"])
+    for w in stray:
+        dispatch(f'hl.dsp.focus({{ workspace = "{w["id"]}" }})')
+        dispatch(f'hl.dsp.workspace.move({{ monitor = "{owner[w["id"]]}" }})')
+
+    def wanted(rank: int, m: dict) -> int:
+        cur = shown.get(m["name"], 0)
+        lo = rank * WS_PER_MONITOR + 1
+        return cur if lo <= cur < lo + WS_PER_MONITOR else lo
+    order = sorted(enumerate(mons), key=lambda rm: rm[1]["name"] == focused)
+    for rank, m in order:
+        dispatch(f'hl.dsp.focus({{ workspace = "{wanted(rank, m)}" }})')
 
 
 def ident(m: dict, all_desc: list[str]) -> str:
@@ -271,6 +332,7 @@ def main(argv: list[str]) -> int:
         old = active_signature()
 
         if mode == "--auto" and old == sig:
+            place_workspaces()
             return 0
 
         LAYOUTS.mkdir(parents=True, exist_ok=True)
@@ -292,6 +354,8 @@ def main(argv: list[str]) -> int:
         print(f"monitor layout {what} for {names}")
         if reload:
             subprocess.run(["hyprctl", "reload"], capture_output=True, check=False)
+        if mode == "--auto":
+            place_workspaces()
         if what == "set up" and mode == "--auto":
             notify("Monitors set up", f"{names} — adjust in ~/.config/hypr/displays.lua")
     return 0

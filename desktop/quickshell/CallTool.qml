@@ -32,46 +32,22 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             width: 96; height: 96
 
-            // The halo is the only thing that moves. A ring that keeps
-            // breathing is what says the call is still up without needing the
-            // seconds to be read.
-            Rectangle {
+            Text {
                 anchors.centerIn: parent
-                width: 96; height: 96; radius: 48
-                color: "transparent"
-                border.width: 2
-                border.color: Qt.alpha(root.tint, 0.35)
-                SequentialAnimation on scale {
-                    running: root.live
-                    loops: Animation.Infinite
-                    alwaysRunToEnd: true
-                    NumberAnimation { to: 1.0; duration: 1100; easing.type: Easing.InOutSine }
-                    NumberAnimation { to: 0.86; duration: 1100; easing.type: Easing.InOutSine }
-                }
+                text: !root.live ? ""
+                : IslandState.callDeafened ? "\u{f07ce}"
+                : IslandState.callMuted ? "\u{f036d}"
+                : IslandState.callApp.glyph
+                color: root.tint
+                Behavior on color { ColorAnimation { duration: 200 } }
+                font.family: root.theme.fontMono
+                font.pixelSize: 60
                 SequentialAnimation on opacity {
                     running: root.live
                     loops: Animation.Infinite
                     alwaysRunToEnd: true
-                    NumberAnimation { to: 0.15; duration: 1100; easing.type: Easing.InOutSine }
-                    NumberAnimation { to: 0.9; duration: 1100; easing.type: Easing.InOutSine }
-                }
-            }
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: 74; height: 74; radius: 37
-                color: root.tint
-                Behavior on color { ColorAnimation { duration: 200 } }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: !root.live ? ""
-                    : IslandState.callDeafened ? "\u{f07ce}"
-                    : IslandState.callMuted ? "\u{f036d}"
-                    : IslandState.callApp.glyph
-                    color: "#ffffff"
-                    font.family: root.theme.fontMono
-                    font.pixelSize: 32
+                    NumberAnimation { to: 0.7; duration: 1100; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 1; duration: 1100; easing.type: Easing.InOutSine }
                 }
             }
         }

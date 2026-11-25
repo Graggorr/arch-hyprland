@@ -32,30 +32,47 @@ FloatingWindow {
     // One registry rather than hand-built panes, because search has to see
     // every row wherever it lives. A row is its section's business only until
     // someone types — then it is a search result like any other.
+    // Ordered by purpose, not alphabet: the everyday switches first, then
+    // the top of the screen from the outside in, the rest of the desktop,
+    // the hardware, and input last. `group` heads a run in the sidebar.
     readonly property var sections: [
-        { id: "general",  glyph: "\u{f062e}", name: "General" },
-        { id: "menubar",  glyph: "\u{f06fc}", name: "Menu bar" },
-        { id: "corners",  glyph: "\u{f0607}", name: "Corners" },
-        { id: "gaps",     glyph: "\u{f1487}", name: "Gaps" },
-        { id: "mode",     glyph: "\u{f0379}", name: "Notch" },
-        { id: "pill",     glyph: "\u{f0150}", name: "Pill" },
-        { id: "type",     glyph: "\u{f0284}", name: "Font" },
-        { id: "status",   glyph: "\u{f0079}", name: "Devices" },
-        { id: "tray",     glyph: "\u{f168e}", name: "Tray" },
-        { id: "island",   glyph: "\u{f0cb5}", name: "Bar & Shape" },
-        { id: "card",     glyph: "\u{f0b33}", name: "Card" },
-        { id: "cc",       glyph: "\u{f0570}", name: "Control Center" },
-        { id: "dock",     glyph: "\u{f10a9}", name: "Dock" },
-        { id: "sound",    glyph: "\u{f057e}", name: "Sound" },
-        { id: "keys",     glyph: "\u{f030c}", name: "Keybinds" },
-        { id: "displays", glyph: "\u{f037a}", name: "Displays" },
-        { id: "behavior", glyph: "\u{f0493}", name: "Behavior" }
-    ].sort((a, b) => a.name.localeCompare(b.name))
+        { id: "general",  glyph: "\u{f062e}", name: "General",        group: "" },
+        { id: "menubar",  glyph: "\u{f06fc}", name: "Menu bar",       group: "Top bar" },
+        { id: "mode",     glyph: "\u{f0379}", name: "Notch",          group: "Top bar" },
+        { id: "pill",     glyph: "\u{f0150}", name: "Pill",           group: "Top bar" },
+        { id: "island",   glyph: "\u{f0cb5}", name: "Bar & Shape",    group: "Top bar" },
+        { id: "card",     glyph: "\u{f0b33}", name: "Card",           group: "Top bar" },
+        { id: "cc",       glyph: "\u{f0570}", name: "Control Center", group: "Top bar" },
+        { id: "tray",     glyph: "\u{f168e}", name: "Tray",           group: "Top bar" },
+        { id: "monitor",  glyph: "\u{f04c5}", name: "Monitoring",     group: "Hardware" },
+        { id: "dock",     glyph: "\u{f10a9}", name: "Dock",           group: "Desktop" },
+        { id: "gaps",     glyph: "\u{f1487}", name: "Gaps",           group: "Desktop" },
+        { id: "corners",  glyph: "\u{f0607}", name: "Corners",        group: "Desktop" },
+        { id: "type",     glyph: "\u{f0284}", name: "Font",           group: "Desktop" },
+        { id: "displays", glyph: "\u{f037a}", name: "Displays",       group: "Hardware" },
+        { id: "sound",    glyph: "\u{f057e}", name: "Sound",          group: "Hardware" },
+        { id: "status",   glyph: "\u{f0079}", name: "Devices",        group: "Hardware" },
+        { id: "station",  glyph: "\u{f1901}", name: "Power station",  group: "Hardware" },
+        { id: "keys",     glyph: "\u{f030c}", name: "Keybinds",       group: "Input" },
+        { id: "behavior", glyph: "\u{f0493}", name: "Behavior",       group: "Input" }
+    ]
+    // The sidebar's rows: the shown sections with a heading wherever the
+    // group changes.
+    readonly property var sidebarItems: {
+        const out = [];
+        let last = null;
+        for (const sec of root.shownSections) {
+            if (sec.group !== last && sec.group !== "") out.push({ header: sec.group });
+            last = sec.group;
+            out.push(sec);
+        }
+        return out;
+    }
 
     // The order General lists its rows in. The rows themselves are declared
     // further down, next to the sections they were split off from.
     readonly property var generalKeys: [
-        "shellMode", "dnd", "gameMode", "dock", "menuBar", "topTray", "statusCircle", "clock24h", "liveBars", "desktopUpdates"
+        "shellMode", "powerProfile", "dnd", "gameMode", "dock", "menuBar", "topTray", "statusCircle", "clock24h", "liveBars", "desktopUpdates"
     ]
 
     // A section whose rows all went elsewhere, or mean nothing in the mode in
@@ -65,10 +82,12 @@ FloatingWindow {
         const out = [];
         for (let s = 0; s < root.sections.length; s++) {
             const id = root.sections[s].id;
-            let keep = id === "cc" || id === "sound" || id === "keys" || id === "displays";
+            let keep = id === "cc" || id === "sound" || id === "keys" || id === "displays"
+                || id === "monitor" || id === "tray";
             for (let i = 0; !keep && i < root.registry.length; i++) {
                 const r = root.registry[i];
-                keep = r.section === id && !(r.notchOnly && !notch) && !(r.islandOnly && notch) && !(r.syncOnly && !IslandState.syncInstalled);
+                keep = r.section === id && !(r.notchOnly && !notch) && !(r.islandOnly && notch) && !(r.syncOnly && !IslandState.syncInstalled)
+                    && !(r.stationOnly && !IslandState.stationKnown);
             }
             if (keep) out.push(root.sections[s]);
         }
@@ -104,6 +123,9 @@ FloatingWindow {
           label: "Album art while a player is up",
           desc: "Circle detaches it beside the pill, the Duo look",
           choices: [ { id: "circle", label: "Circle" }, { id: "pill", label: "In pill" }, { id: "off", label: "Hidden" } ] },
+        { section: "general", type: "choice", key: "powerProfile",
+          label: "Power profile", desc: "power-profiles-daemon · applies at once",
+          choices: [ { id: "saver", label: "Saver" }, { id: "balanced", label: "Balanced" }, { id: "performance", label: "Performance" } ] },
         { section: "general", type: "toggle", key: "desktopUpdates", syncOnly: true,
           label: "Desktop updates",
           desc: "Pull new versions of this desktop every hour · off keeps your config exactly as it is" },
@@ -170,6 +192,12 @@ FloatingWindow {
         { section: "status", type: "toggle", key: "controllerCircle",
           label: "Controllers",
           desc: "Each connected controller in its own icon and colour, taken from its Bluetooth name · a circle, or charge in Devices" },
+        { section: "status", type: "toggle", key: "mouseCircle",
+          label: "Mouse",
+          desc: "While it reports a charge · a circle beside the island (the status circle's ring covers it while that is on), or charge in Devices" },
+        { section: "status", type: "toggle", key: "stationCircle", stationOnly: true,
+          label: "Power station",
+          desc: "While the oukitel daemon reaches it · a circle beside the island, or charge in the menu bar's Devices item" },
         { section: "status", type: "slider", key: "statusWarnPct",
           label: "Low battery warning", desc: "Rings and the menu bar's charge turn to the warning tone at or below this",
           min: 5, max: 50, step: 5, fmt: "pctInt" },
@@ -177,6 +205,15 @@ FloatingWindow {
           label: "Click opens", desc: "",
           barIdle: "Island only · what the status circle's click opens",
           choices: [ { id: "hub", label: "Hub" }, { id: "battery", label: "Batteries" }, { id: "monitor", label: "Monitoring" } ] },
+        { section: "station", type: "toggle", key: "stationAlert", stationOnly: true,
+          label: "Low-charge alert",
+          desc: "A notification once per dip below Devices → Low battery warning, and the pill's warning while it lasts · only when it is not charging" },
+        { section: "station", type: "slider", key: "stationFlowMax", stationOnly: true,
+          label: "Power bar scale", desc: "The wattage that fills the menu bar's input and output bars",
+          min: 200, max: 3000, step: 100, fmt: "w" },
+        { section: "station", type: "slider", key: "stationCapacityWh", stationOnly: true,
+          label: "Battery capacity", desc: "Used to estimate how long the battery carries the load when the station is not discharging · P2001E Pro = 2048 Wh",
+          min: 500, max: 5000, step: 64, fmt: "wh" },
         { section: "general", type: "toggle", key: "menuBar",
           label: "Menu bar",
           desc: "Full-width bar · distro menu and app on the left · tray, status and date on the right" },
@@ -294,7 +331,9 @@ FloatingWindow {
         // Rows that mean nothing in the mode in use are left out: the notch
         // is welded to the edge, so it has no gaps or lift to tune.
         const notch = IslandState.notch;
-        const fits = (r) => !(r.notchOnly && !notch) && !(r.islandOnly && notch) && !(r.syncOnly && !IslandState.syncInstalled);
+        // stationOnly rows mean nothing without the oukitel daemon running.
+        const fits = (r) => !(r.notchOnly && !notch) && !(r.islandOnly && notch) && !(r.syncOnly && !IslandState.syncInstalled)
+            && !(r.stationOnly && !IslandState.stationKnown);
         if (q === "" && root.section === "general") {
             const out = [];
             for (let k = 0; k < root.generalKeys.length; k++)
@@ -326,6 +365,8 @@ FloatingWindow {
         if (row.fmt === "pct") return Math.round(v * 100) + "%";
         if (row.fmt === "pctInt") return Math.round(v) + "%";
         if (row.fmt === "ms") return Math.round(v) + " ms";
+        if (row.fmt === "w") return Math.round(v) + " W";
+        if (row.fmt === "wh") return Math.round(v) + " Wh";
         return Math.round(v) + " px";
     }
 
@@ -486,11 +527,32 @@ FloatingWindow {
                             spacing: 3
 
                             Repeater {
-                                model: root.shownSections
+                                model: root.sidebarItems
+
+                              Item {
+                                required property var modelData
+                                width: parent.width
+                                height: modelData.header ? 26 : 34
+
+                                Text {
+                                    visible: !!parent.modelData.header
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 12
+                                    anchors.bottom: parent.bottom
+                                    anchors.bottomMargin: 4
+                                    text: parent.modelData.header || ""
+                                    color: Qt.alpha(root.theme.on_surface_variant, 0.6)
+                                    font.family: root.theme.fontSans
+                                    font.pixelSize: IslandState.ts(9)
+                                    font.weight: Font.DemiBold
+                                    font.capitalization: Font.AllUppercase
+                                    font.letterSpacing: 0.8
+                                }
 
                                 Rectangle {
                                     id: secRow
-                                    required property var modelData
+                                    visible: !parent.modelData.header
+                                    readonly property var modelData: parent.modelData
                                     readonly property bool active: !root.searching && root.section === modelData.id
 
                                     width: parent.width
@@ -508,7 +570,7 @@ FloatingWindow {
 
                                         Text {
                                             anchors.verticalCenter: parent.verticalCenter
-                                            text: secRow.modelData.glyph
+                                            text: secRow.modelData.glyph || ""
                                             color: secRow.active ? root.theme.on_secondary_container
                                                                  : Qt.alpha(root.theme.on_surface_variant, 0.85)
                                             font.family: root.theme.fontMono
@@ -516,7 +578,7 @@ FloatingWindow {
                                         }
                                         Text {
                                             anchors.verticalCenter: parent.verticalCenter
-                                            text: secRow.modelData.name
+                                            text: secRow.modelData.name || ""
                                             color: secRow.active ? root.theme.on_secondary_container : root.theme.on_surface
                                             font.family: root.theme.fontSans
                                             font.pixelSize: IslandState.ts(12)
@@ -530,6 +592,7 @@ FloatingWindow {
                                         onClicked: { root.query = ""; input.text = ""; root.section = secRow.modelData.id; }
                                     }
                                 }
+                              }
                             }
                         }
                         }
@@ -589,6 +652,35 @@ FloatingWindow {
                                 color: Qt.alpha(root.theme.on_surface_variant, 0.7)
                                 font.family: root.theme.fontMono
                                 font.pixelSize: 10
+                            }
+
+                            // Monitoring and Tray: the island's panels, so CPU/RAM/
+                            // GPU and the tray menus stay reachable whatever the
+                            // menu bar or the Control Center hold.
+                            MonitorTool {
+                                visible: !root.searching && root.section === "monitor"
+                                live: visible && root.visible
+                                x: -18
+                                width: rowsCol.width + 36
+                                height: visible ? preferredHeight : 0
+                                theme: root.theme
+                            }
+                            TrayTool {
+                                visible: !root.searching && root.section === "tray"
+                                x: -18
+                                width: rowsCol.width + 36
+                                height: visible ? preferredHeight : 0
+                                theme: root.theme
+                            }
+
+                            // Power station: the island's panel itself heads
+                            // the section, above its preference rows.
+                            StationTool {
+                                visible: !root.searching && root.section === "station"
+                                x: -18
+                                width: rowsCol.width + 36
+                                height: visible ? preferredHeight - 18 : 0
+                                theme: root.theme
                             }
 
                             Repeater {
@@ -1153,6 +1245,8 @@ FloatingWindow {
                                 id: ccCol
                                 width: ccFlick.width - 10
                                 spacing: 12
+                                // room for the corner ✕ on a top-row control
+                                topPadding: 8
 
                                 ControlCenter {
                                     id: ccEdit
@@ -1216,28 +1310,6 @@ FloatingWindow {
                                         }
                                     }
 
-                                    Rectangle {
-                                        // The last control cannot be removed: an emptied
-                                        // layout is the reset sentinel and would resurrect
-                                        // every default — removeSel refuses, so this says so.
-                                        readonly property bool lastOne: ccEdit.placed.length <= 1
-                                        width: rmText.implicitWidth + 18
-                                        height: 26; radius: 9
-                                        opacity: lastOne ? 0.35 : 1
-                                        color: rmHov.hovered && !lastOne ? Qt.alpha(root.theme.error, 0.22)
-                                                                         : Qt.alpha(root.theme.on_surface, 0.05)
-                                        Behavior on color { ColorAnimation { duration: 120 } }
-                                        Text {
-                                            id: rmText
-                                            anchors.centerIn: parent
-                                            text: "Remove"
-                                            color: rmHov.hovered && !parent.lastOne ? root.theme.error : root.theme.on_surface
-                                            font.family: root.theme.fontSans
-                                            font.pixelSize: IslandState.ts(10)
-                                        }
-                                        HoverHandler { id: rmHov; enabled: !parent.lastOne; cursorShape: Qt.PointingHandCursor }
-                                        MouseArea { anchors.fill: parent; enabled: !parent.lastOne; onClicked: ccEdit.removeSel() }
-                                    }
                                 }
 
                                 // whatever is not placed — the reference's

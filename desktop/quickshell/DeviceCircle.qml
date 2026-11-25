@@ -1,7 +1,7 @@
 import QtQuick
 
 // A linked device's piece of the island, detached left: the AirPods Pro, the
-// phone or a controller, there only while it is reachable, so its presence alone answers
+// phone, a controller or the power station, there only while it is reachable, so its presence alone answers
 // "is it connected". The ring is the charge, from IslandState's shared
 // reading (the menu bar's device items read the same one); the icon is
 // DeviceGlyph, a controller's in its own body colour.
@@ -11,18 +11,26 @@ Item {
     property var theme
     property string screenName: ""
     property bool expanded: false
-    // "airpods", "phone" or "controller"; a controller also takes its entry
+    // "airpods", "phone", "mouse", "station" or "controller"; a controller also takes its entry
     // from IslandState.controllers.
     property string kind: "airpods"
     property var device: null
 
     readonly property bool isPhone: root.kind === "phone"
     readonly property bool isPad: root.kind === "controller"
+    readonly property bool isStation: root.kind === "station"
+    readonly property bool isMouse: root.kind === "mouse"
     readonly property bool connected: root.isPad ? root.device !== null
+        : root.isStation ? IslandState.stationOnline
+        : root.isMouse ? IslandState.mouseConnected
         : root.isPhone ? IslandState.phoneConnected : IslandState.airpodsConnected
     readonly property real pct: root.isPad ? (root.device ? root.device.pct : -1)
+        : root.isStation ? IslandState.stationFrac
+        : root.isMouse ? IslandState.mousePct
         : root.isPhone ? IslandState.phonePct : IslandState.airpodsPct
     readonly property bool charging: root.isPad ? (root.device !== null && root.device.charging)
+        : root.isStation ? false
+        : root.isMouse ? IslandState.mouseCharging
         : root.isPhone ? IslandState.phoneCharging : IslandState.airpodsCharging
     readonly property color ringColor: IslandState.batteryColor(root.pct, root.charging, root.theme)
 

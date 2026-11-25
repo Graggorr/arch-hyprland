@@ -173,6 +173,7 @@ Item {
             root.nlOn = true;
         }
         nlCtl.running = true;
+        IslandState.nightOn = root.nlOn;
     }
     Process { id: nlTempProc }
     function nlSetTemp(t) {

@@ -3,7 +3,8 @@ import Quickshell
 import Quickshell.Io
 
 // Settings → Displays. Resolution, refresh rate, scale, rotation, order and
-// on/off for every connected monitor, saved for good.
+// on/off for every connected monitor, saved for good, plus how long the
+// screens stay on without input.
 //
 // The monitors and their modes come from hypr/scripts/monitors.py --json.
 // Apply hands the whole layout to monitors.py --apply, which writes
@@ -247,11 +248,118 @@ Item {
         }
     }
 
+    // Screens off: how long without pointer or keyboard input before every
+    // monitor goes dark. Applies at once, no Apply / Keep needed. The unit is
+    // the pane's own choice, so 90 sec stays 90 sec instead of turning into
+    // 1.5 min; on open it starts from the largest unit that fits evenly.
+    readonly property var units: [ { id: "s", label: "sec", k: 1 }, { id: "m", label: "min", k: 60 }, { id: "h", label: "h", k: 3600 } ]
+    property string offUnit: {
+        const v = IslandState.cfg.screenOffSecs;
+        return v % 3600 === 0 ? "h" : v % 60 === 0 ? "m" : "s";
+    }
+    function unitK(u) { return u === "h" ? 3600 : u === "m" ? 60 : 1; }
+    function setScreenOff(amount, unit) {
+        const n = Math.round(Number(amount));
+        if (!(n > 0)) { offInput.text = String(IslandState.cfg.screenOffSecs / root.unitK(root.offUnit)); return; }
+        root.offUnit = unit;
+        IslandState.setPref("screenOffSecs", Math.max(5, Math.min(86400, n * root.unitK(unit))));
+    }
+
+    Rectangle {
+        id: screenOffCard
+        anchors.top: header.bottom
+        anchors.topMargin: 10
+        width: parent.width
+        height: 56
+        radius: 14
+        color: Qt.alpha(root.theme.fg, 0.05)
+
+        Column {
+            anchors.left: parent.left
+            anchors.leftMargin: 14
+            anchors.right: offControls.left
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 1
+            Text {
+                text: "Turn screens off"
+                color: root.theme.fg
+                font.family: root.theme.fontSans
+                font.pixelSize: IslandState.ts(12)
+                font.weight: Font.DemiBold
+            }
+            Text {
+                width: parent.width
+                elide: Text.ElideRight
+                text: IslandState.cfg.screenOff ? "After this long without mouse or keyboard input · audio postpones it"
+                                                : "Never · screens stay on"
+                color: Qt.alpha(root.theme.on_surface_variant, 0.85)
+                font.family: root.theme.fontSans
+                font.pixelSize: IslandState.ts(10)
+            }
+        }
+
+        Row {
+            id: offControls
+            anchors.right: parent.right
+            anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: IslandState.cfg.screenOff
+                width: 56; height: 28; radius: 10
+                color: Qt.alpha(root.theme.on_surface, offInput.activeFocus ? 0.12 : 0.07)
+                border.width: offInput.activeFocus ? 1 : 0
+                border.color: Qt.alpha(root.theme.primary, 0.7)
+                TextInput {
+                    id: offInput
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    verticalAlignment: TextInput.AlignVCenter
+                    horizontalAlignment: TextInput.AlignHCenter
+                    text: String(IslandState.cfg.screenOffSecs / root.unitK(root.offUnit))
+                    validator: IntValidator { bottom: 1; top: 86400 }
+                    color: root.theme.fg
+                    selectionColor: Qt.alpha(root.theme.primary, 0.4)
+                    selectByMouse: true
+                    font.family: root.theme.fontMono
+                    font.pixelSize: IslandState.ts(11)
+                    clip: true
+                    onEditingFinished: root.setScreenOff(text, root.offUnit)
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.IBeamCursor
+                    onClicked: { offInput.forceActiveFocus(); offInput.selectAll(); }
+                }
+            }
+            Repeater {
+                model: IslandState.cfg.screenOff ? root.units : []
+                Chip {
+                    required property var modelData
+                    anchors.verticalCenter: parent.verticalCenter
+                    label: modelData.label
+                    on: root.offUnit === modelData.id
+                    onPicked: root.setScreenOff(offInput.text, modelData.id)
+                }
+            }
+            ToggleSwitch {
+                anchors.verticalCenter: parent.verticalCenter
+                theme: root.theme
+                checked: IslandState.cfg.screenOff
+                onToggled: IslandState.setPref("screenOff", !IslandState.cfg.screenOff)
+            }
+        }
+    }
+
     // arrangement: drag monitors where they stand on the desk; they snap
     // edge to edge on release
     Item {
         id: preview
-        anchors.top: header.bottom
+        anchors.top: screenOffCard.bottom
         anchors.topMargin: 10
         width: parent.width
         height: 140
