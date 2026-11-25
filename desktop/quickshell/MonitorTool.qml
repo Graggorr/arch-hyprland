@@ -2,8 +2,8 @@ import QtQuick
 import Quickshell.Io
 
 // The bottom bar's telemetry, given a surface with room: the same scripts,
-// polled only while the tool is on screen. Hovering a tile pours its full
-// tooltip — the per-core table, the power breakdown — into the detail panel,
+// polled only while the tool is on screen. Clicking a tile pins its full
+// detail — the per-core table, the power breakdown — into the detail panel,
 // which a 26px bar pill never had space for.
 Item {
     id: root
@@ -18,10 +18,16 @@ Item {
     readonly property bool showing: IslandState.tool === "monitor" || root.live
     readonly property string wb: "@HOME@/.config/quickshell/scripts/"
 
-    // Which tile the detail panel is describing. Sticky on the last hover
-    // rather than cleared on exit, so the panel never flashes empty while the
-    // pointer travels.
-    property int detailIdx: 0
+    // Which tile the detail panel is describing. Chosen by a left click and
+    // held until another tile is clicked — hovering never moves it, so the
+    // pointer can travel over the grid without losing what is being read.
+    // Remembered across opens of the card.
+    property int detailIdx: Math.max(0, Math.min(root.metrics.length - 1,
+                                     IslandState.cacheGet("monitor.detail", 0)))
+    function select(i) {
+        root.detailIdx = i;
+        IslandState.cacheSet("monitor.detail", i);
+    }
 
     readonly property var metrics: [
         // Temperature rides along with usage rather than holding a tile of its
@@ -36,7 +42,7 @@ Item {
         // Empty text is this script's healthy state — made explicit here,
         // where a blank tile would read as broken rather than as calm.
         { label: "Services", cmd: root.wb + "failed-units.sh",     ms: 30000,
-          okText: "\u{f0560}  0", okTip: "No failed systemd units (system or user)" },
+          okText: "\u{f0560}  0" },
         // Healthy here is a real answer, not an absence: the tooltip names both
         // drives and their driver either way, so the tile can be read as
         // confirmation before launching a game rather than only as a warning.
@@ -114,8 +120,11 @@ Item {
                     width: 120
                     height: 54
                     radius: 12
-                    color: tileHover.hovered ? Qt.alpha(root.theme.fg, 0.11)
+                    color: tile.current ? Qt.alpha(root.theme.accent, 0.16)
+                         : tileHover.hovered ? Qt.alpha(root.theme.fg, 0.11)
                                              : Qt.alpha(root.theme.fg, 0.07)
+                    border.width: tile.current ? 1 : 0
+                    border.color: Qt.alpha(root.theme.accent, 0.55)
                     Behavior on color { ColorAnimation { duration: 120 } }
 
                     // The scripts lead their text with a glyph; it goes in the
@@ -173,7 +182,11 @@ Item {
 
                     HoverHandler {
                         id: tileHover
-                        onHoveredChanged: if (hovered) root.detailIdx = tile.index
+                        cursorShape: Qt.PointingHandCursor
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.LeftButton
+                        onTapped: root.select(tile.index)
                     }
 
                     // Each tile owns its poll; nothing runs while the card is
@@ -199,31 +212,81 @@ Item {
 
 
         // ── detail ────────────────────────────────────────────────
-        Column {
+        Item {
+            id: detail
             width: parent.width - grid.width - 1 - 28
-            spacing: 6
+            height: parent.height
 
-            Text {
-                text: root.metrics[root.detailIdx].label
-                color: root.theme.fg
-                font.family: root.theme.fontDisplay
-                font.pixelSize: IslandState.ts(15)
-                font.weight: Font.Bold
+            readonly property var cur: root.readings[root.metrics[root.detailIdx].label] || null
+
+            Row {
+                id: dHead
+                spacing: 8
+                Text {
+                    id: dLabel
+                    text: root.metrics[root.detailIdx].label
+                    color: root.theme.fg
+                    font.family: root.theme.fontDisplay
+                    font.pixelSize: IslandState.ts(15)
+                    font.weight: Font.Bold
+                }
+                Text {
+                    anchors.baseline: dLabel.baseline
+                    text: {
+                        const c = detail.cur;
+                        if (!c) return "";
+                        return String(c.text).replace(/^([\uD800-\uDBFF][\uDC00-\uDFFF]|[\uE000-\uF8FF]|[^\s\w%.\u2026-]+)\s*/, "");
+                    }
+                    color: root.clsColor(detail.cur ? detail.cur.cls : "")
+                    font.family: root.theme.fontDisplay
+                    font.features: ({ "tnum": 1 })
+                    font.pixelSize: IslandState.ts(13)
+                }
             }
 
-            Text {
-                width: parent.width
-                text: {
-                    const r = root.readings[root.metrics[root.detailIdx].label];
-                    return r && r.tip !== "" ? r.tip : "no detail";
-                }
-                color: Qt.alpha(root.theme.fg, 0.88)
-                font.family: root.theme.fontMono
-                font.pixelSize: 10
-                lineHeight: 1.25
-                wrapMode: Text.NoWrap
-                elide: Text.ElideRight
+            // Long readings (16 cores, the drive inventory) run past the card;
+            // they scroll instead of being clipped.
+            Flickable {
+                id: dFlick
+                anchors.top: dHead.bottom
+                anchors.topMargin: 8
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
                 clip: true
+                contentWidth: width
+                contentHeight: dText.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
+                interactive: contentHeight > height
+
+                Connections {
+                    target: root
+                    function onDetailIdxChanged() { dFlick.contentY = 0; }
+                }
+
+                Text {
+                    id: dText
+                    width: dFlick.width - 8
+                    text: {
+                        const r = detail.cur;
+                        return r && r.tip !== "" ? r.tip : "no detail yet";
+                    }
+                    color: Qt.alpha(root.theme.fg, 0.88)
+                    font.family: root.theme.fontMono
+                    font.pixelSize: 10
+                    lineHeight: 1.25
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                }
+            }
+
+            Rectangle {
+                visible: dFlick.interactive
+                anchors.right: dFlick.right
+                y: dFlick.y + dFlick.visibleArea.yPosition * dFlick.height
+                width: 3
+                radius: 1.5
+                height: Math.max(16, dFlick.visibleArea.heightRatio * dFlick.height)
+                color: Qt.alpha(root.theme.fg, 0.25)
             }
         }
     }
