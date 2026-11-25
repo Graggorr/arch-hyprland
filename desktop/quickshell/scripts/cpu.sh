@@ -17,6 +17,10 @@ RAPL_CORE=/sys/class/powercap/intel-rapl:0:0     # core domain (all cores)
 MAXRANGE=$(cat "$RAPL_PKG/max_energy_range_uj" 2>/dev/null)
 INTERVAL=0.8
 
+procsnap() {
+  awk '{ l=$0; o=index(l,"("); c=match(l,/\) [A-Z] /); n=substr(l,o+1,c-o-1); r=substr(l,c+2); split(r,f," "); print FILENAME, f[12]+f[13], n }' /proc/[0-9]*/stat 2>/dev/null
+}
+
 read_energy() { cat "$1/energy_uj" 2>/dev/null; }
 
 # ── snapshot 1 ──
@@ -24,6 +28,7 @@ mapfile -t stat1 < <(grep -E '^cpu[0-9 ]' /proc/stat)
 e_pkg1=$(read_energy "$RAPL_PKG")
 e_core1=$(read_energy "$RAPL_CORE")
 t1=$(date +%s.%N)
+ps1=$(procsnap)
 
 sleep "$INTERVAL"
 
@@ -32,6 +37,7 @@ mapfile -t stat2 < <(grep -E '^cpu[0-9 ]' /proc/stat)
 e_pkg2=$(read_energy "$RAPL_PKG")
 e_core2=$(read_energy "$RAPL_CORE")
 t2=$(date +%s.%N)
+ps2=$(procsnap)
 
 # ── per-core usage% + total, via awk over the two /proc/stat snapshots ──
 # stat lines: "cpu ..." (aggregate) then cpu0..cpuN. Fields after label:
@@ -94,34 +100,46 @@ if [ -n "$e_pkg1" ] && [ -n "$e_pkg2" ]; then
     }')
 fi
 
-# pango-markup tooltip: monospace body + a totals footer
-tooltip="<tt>${lines}</tt>"
-tooltip+="────────────────────"$'\n'
-tooltip+="<b>total</b>  ${total_usage}% usage"
-if [ -n "$watt_line" ]; then
-  tooltip+=$'\n'"${bolt} ${watt_line}"
-else
-  tooltip+=$'\n'"${bolt} watts n/a (RAPL not readable — see 99-rapl-powercap.rules)"
-fi
 
-therm=$(printf '\uf2c9')
+model=$(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo | sed 's/(R)//g; s/(TM)//g; s/13th Gen //; s/ CPU//; s/  */ /g')
+read -r l1 l5 l15 runq _ < /proc/loadavg
+gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)
+up=$(awk '{s=int($1); d=int(s/86400); h=int(s%86400/3600); m=int(s%3600/60); if(d) printf "%dd %dh %dm", d,h,m; else printf "%dh %dm", h,m}' /proc/uptime)
+hz=$(getconf CLK_TCK)
+top=$(awk -v hz="$hz" -v dt="$(awk -v a="$t1" -v b="$t2" 'BEGIN{print b-a}')" '
+  FNR==NR { a[$1]=$2; next }
+  ($1 in a) { d=$2-a[$1]; if (d>0) { n=$3; for(i=4;i<=NF;i++) n=n" "$i; s[n]+=d } }
+  END { for (n in s) printf "%.1f\t%s\n", 100*s[n]/hz/dt, n }' <(echo "$ps1") <(echo "$ps2") \
+  | sort -t$'\t' -k1,1 -rn | head -6 | awk -F'\t' '{printf "  %6s%%  %s\n", $1, substr($2,1,28)}')
+
+therm=$(printf '')
 temp=$(sensors -j 2>/dev/null | jq -r '."coretemp-isa-0000"."Package id 0".temp1_input // empty')
 [ -z "$temp" ] && temp=$(sensors -j 2>/dev/null | jq -r '[.. | objects | ."Package id 0"?.temp1_input] | map(select(.!=null)) | first // empty')
 temp=${temp%.*}
 
+tooltip="${model}  ·  ${ncpu} threads"$'\n'
+tooltip+="usage     ${total_usage}%"$'\n'
+[ -n "$temp" ] && tooltip+="temp      ${temp}°C package"$'\n'
+if [ -n "$watt_line" ]; then
+  tooltip+="power     ${watt_line#package }"$'\n'
+else
+  tooltip+="power     n/a (RAPL not readable)"$'\n'
+fi
+tooltip+="load      ${l1} ${l5} ${l15}"$'\n'
+tooltip+="tasks     ${runq} running/total"$'\n'
+tooltip+="governor  ${gov:-n/a}"$'\n'
+tooltip+="uptime    ${up}"$'\n'$'\n'
+tooltip+="busiest now (% of one core)"$'\n'"${top}"$'\n'$'\n'
+tooltip+="per core"$'\n'"${lines%$'\n'}"
+
 class="ok"
 [ "$total_usage" -ge 70 ] && class="high"
 [ "$total_usage" -ge 90 ] && class="crit"
-
 if [ -n "$temp" ]; then
-  text="$icon  ${total_usage}%"
-  tooltip+=$'\n'"${therm} package ${temp}°C"
   [ "$temp" -ge 70 ] && [ "$class" = "ok" ] && class="high"
   [ "$temp" -ge 85 ] && class="crit"
-else
-  text="$icon  ${total_usage}%"
-  tooltip+=$'\n'"${therm} package temp n/a (no coretemp sensor)"
 fi
+text="$icon  ${total_usage}%"
 
 jq -cn --arg t "$text" --arg c "$class" --arg tip "$tooltip" \
   '{text:$t, class:$c, tooltip:$tip}'
