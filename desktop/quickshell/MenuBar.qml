@@ -623,18 +623,18 @@ Item {
             Row {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
-                Rectangle {
+                Item {
+                    id: cBadge
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(root.band - 8, 22); height: width; radius: width / 2
-                    color: cSlot.hushed ? root.theme.error : root.theme.primary
+                    width: Math.min(root.band - 8, 20); height: width
                     Text {
                         anchors.centerIn: parent
                         text: IslandState.callDeafened ? "\u{f07ce}"
                             : IslandState.callMuted ? "\u{f036d}"
                             : (IslandState.callApp ? IslandState.callApp.glyph : "")
-                        color: cSlot.hushed ? "#ffffff" : root.theme.on_primary
+                        color: cSlot.hushed ? root.theme.error : root.theme.fg
                         font.family: root.theme.fontMono
-                        font.pixelSize: root.iconPx - 3
+                        font.pixelSize: root.iconPx
                     }
                     SequentialAnimation on opacity {
                         running: IslandState.inCall
@@ -886,6 +886,72 @@ Item {
             }
         }
     }
+    // Station input and output as two live bars, scaled to the rated output
+    // (Settings → Power station), each with its wattage, then the time left.
+    Component {
+        id: stationFlowC
+        Slot {
+            active: root.isOpen("station")
+            pad: Math.max(2, root.pad - 4)
+            onClicked: IslandState.toggleDirect("station", root.screenName)
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 8
+                Repeater {
+                    model: [
+                        { glyph: "\u{f192d}", w: IslandState.stationIn,  tint: root.theme.success },
+                        { glyph: "\u{f192c}", w: IslandState.stationOut, tint: root.theme.accent }
+                    ]
+                    Row {
+                        required property var modelData
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+                        Glyph { text: parent.modelData.glyph; color: Qt.alpha(root.theme.fg, 0.75) }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 30; height: 6; radius: 3
+                            color: Qt.alpha(root.theme.fg, 0.14)
+                            Rectangle {
+                                anchors.left: parent.left
+                                height: parent.height
+                                radius: parent.radius
+                                width: parent.width * Math.max(0, Math.min(1, parent.parent.modelData.w / Math.max(1, IslandState.cfg.stationFlowMax)))
+                                color: parent.parent.modelData.tint
+                                Behavior on width { NumberAnimation { duration: 250 } }
+                            }
+                        }
+                        Label {
+                            text: Math.round(parent.modelData.w) + "W"
+                            font.pixelSize: IslandState.ts(root.fontPx - 1)
+                            font.weight: Font.Medium
+                            font.features: { "tnum": 1 }
+                        }
+                    }
+                }
+                // Time estimate: how long the battery carries the load when
+                // not charging (UPS, hold, on battery), time to full while
+                // charging; hidden when the station has no figure.
+                Row {
+                    readonly property string full: IslandState.stationCharging
+                        ? IslandState.stationHm(IslandState.station.charge_remain_min < 5940 ? IslandState.station.charge_remain_min : 0) : ""
+                    readonly property string time: IslandState.stationRuntime || full
+                    visible: IslandState.stationOnline && time !== ""
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    Glyph {
+                        text: parent.full !== "" && !IslandState.stationRuntime ? "\u{f0084}" : "\u{f051b}"
+                        color: IslandState.stationOnBattery ? root.theme.warn : Qt.alpha(root.theme.fg, 0.75)
+                    }
+                    Label {
+                        text: parent.time
+                        font.pixelSize: IslandState.ts(root.fontPx - 1)
+                        font.weight: Font.Medium
+                        font.features: { "tnum": 1 }
+                    }
+                }
+            }
+        }
+    }
     Component {
         id: trayC
         TopTray {
@@ -924,7 +990,7 @@ Item {
             }
         }
     }
-    // AirPods, phone and controller charge, the way macOS menu bar battery
+    // AirPods, phone, mouse, controller and power station charge, the way macOS menu bar battery
     // apps show them: the device's icon (the same DeviceGlyph the island's
     // circles draw, a controller in its own colour) and its percentage, no ring. Each follows the
     // same toggle as its island circle and shows only while connected; the
@@ -966,17 +1032,7 @@ Item {
             }
         }
     }
-    readonly property var barDevices: {
-        const out = [];
-        if (IslandState.cfg.airpodsCircle && IslandState.airpodsConnected)
-            out.push({ kind: "airpods", body: "", pct: IslandState.airpodsPct, charging: IslandState.airpodsCharging });
-        if (IslandState.cfg.phoneCircle && IslandState.phoneConnected)
-            out.push({ kind: IslandState.phoneKind, body: "", pct: IslandState.phonePct, charging: IslandState.phoneCharging });
-        if (IslandState.cfg.controllerCircle)
-            for (const c of IslandState.controllers)
-                out.push({ kind: c.kind, body: c.tint, pct: c.pct, charging: c.charging });
-        return out;
-    }
+    readonly property var barDevices: IslandState.devices.filter(d => IslandState.cfg[d.pref])
     Component {
         id: soundC
         Slot {
@@ -1041,6 +1097,7 @@ Item {
         case "devices": return root.barDevices.length > 0;
         case "sound": return root.audio !== null;
         case "layout": return IslandState.layoutCode !== "";
+        case "stationflow": return IslandState.stationOnline;
         }
         return true;
     }
@@ -1056,6 +1113,7 @@ Item {
         case "status": return statusC;
         case "notifs": return notifsC;
         case "monitor": return monitorC;
+        case "stationflow": return stationFlowC;
         case "tray": return trayC;
         case "network": return networkC;
         case "bluetooth": return bluetoothC;

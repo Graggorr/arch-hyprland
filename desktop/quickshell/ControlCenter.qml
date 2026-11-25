@@ -70,29 +70,27 @@ Item {
               minW: 1, minH: 1, sizes: [[1,1],[2,1],[2,2]], w: 1, h: 1 },
             { id: "notes",    kind: "notes",   name: "Notes",           glyph: "\u{f09a5}",
               minW: 1, minH: 1, sizes: [[1,1],[2,1],[2,2],[3,2]], w: 2, h: 1 },
-            { id: "system",   kind: "sys",     name: "System",          glyph: "\u{f04c5}",
-              minW: 1, minH: 1, sizes: [[1,1],[2,1],[3,1],[2,2],[3,2]], w: 2, h: 1 },
             { id: "notifs",   kind: "notifs",  name: "Notifications",   glyph: "\u{f009a}",
               minW: 3, minH: 1, sizes: [[4,2],[5,2],[6,2],[7,2],[6,3],[7,3]], w: 7, h: 2 },
             { id: "weather",  kind: "weather", name: "Weather",         glyph: "\u{e30d}",
               minW: 1, minH: 1, sizes: [[1,1],[2,1],[3,1]], w: 2, h: 1 },
-            { id: "battery",  kind: "battery", name: "Mouse battery",   glyph: "\u{f037d}",
-              minW: 1, minH: 1, sizes: [[1,1],[2,2]], w: 1, h: 1 },
-            { id: "network",  kind: "toggle",  name: "Network",         glyph: "\u{f0200}",
-              sizes: [[1,1],[2,1]], w: 1, h: 1 },
-            { id: "bluetooth", kind: "toggle", name: "Bluetooth",       glyph: "\u{f00af}",
-              sizes: [[1,1],[2,1]], w: 1, h: 1 },
-            { id: "gamemode", kind: "toggle",  name: "Game mode",       glyph: "\u{f05ba}",
-              sizes: [[1,1],[2,1]], w: 1, h: 1 },
+            // Every device's charge (id kept from the old mouse tile, so
+            // saved layouts keep its place).
+            { id: "battery",  kind: "battery", name: "Devices",         glyph: "\u{f184f}",
+              minW: 1, minH: 1, sizes: [[1,1],[2,1],[3,1],[4,1],[2,2],[3,2],[4,2]], w: 2, h: 1 },
             { id: "layout",   kind: "toggle",  name: "Layout",          glyph: "\u{f030c}",
+              sizes: [[1,1],[2,1]], w: 1, h: 1 },
+            // Two related switches sharing one tile, each half its own
+            // control (click and right-click as its standalone toggle).
+            { id: "conn",     kind: "pair",    name: "Connections",     glyph: "\u{f0200}", parts: ["network", "bluetooth"],
+              minW: 2, minH: 1, sizes: [[2,1],[3,1],[4,1],[2,2]], w: 4, h: 1 },
+            { id: "gaming",   kind: "pair",    name: "Gaming",          glyph: "\u{f05ba}", parts: ["gamemode", "record"],
+              minW: 2, minH: 1, sizes: [[2,1],[3,1],[4,1],[2,2]], w: 2, h: 1 },
+            { id: "nightlight", kind: "toggle", name: "Night light",    glyph: "\u{f0594}",
               sizes: [[1,1],[2,1]], w: 1, h: 1 },
             { id: "updates",  kind: "toggle",  name: "Updates",         glyph: "\u{f06b0}",
               sizes: [[1,1],[2,1]], w: 1, h: 1 },
-            { id: "profile",  kind: "toggle",  name: "Power profile",   glyph: "\u{f0241}",
-              sizes: [[1,1],[2,1]], w: 1, h: 1 },
             { id: "lock",     kind: "toggle",  name: "Lock",            glyph: "\u{f033e}",
-              sizes: [[1,1],[2,1]], w: 1, h: 1 },
-            { id: "shape",    kind: "toggle",  name: "Island / Notch",  glyph: "\u{f0379}",
               sizes: [[1,1],[2,1]], w: 1, h: 1 }
         ];
         const ts = IslandState.tools;
@@ -101,7 +99,10 @@ Item {
         // would be duplicates in the add-chips. A pruned widget makes its
         // panel add-chip-unreachable — Reset, or the pill and IPC, get it
         // back, and that beats a chip list that stutters every name twice.
-        const owned = ["hub", "call", "media", "weather", "battery", "notifs",
+        // tray and monitor live in the menu bar and in Settings; capture is
+        // the Gaming tile's right half; display opens from Night light.
+        const owned = ["hub", "call", "media", "weather", "battery", "station", "notifs",
+                       "tray", "capture", "display",
                        "calendar", "timer", "notes", "monitor",
                        "bluetooth", "audio"];
         for (let i = 0; i < ts.length; i++) {
@@ -127,28 +128,23 @@ Item {
     readonly property int defaultColumns: 8
     function defaultLayout() {
         return [
-            { id: "bluetooth",    x: 0, y: 0, w: 2, h: 1 },
-            { id: "media",        x: 2, y: 0, w: 4, h: 2 },
-            { id: "layout",       x: 6, y: 0, w: 1, h: 1 },
-            { id: "go:power",     x: 7, y: 0, w: 1, h: 1 },
-            { id: "network",      x: 0, y: 1, w: 2, h: 1 },
-            { id: "battery",      x: 6, y: 1, w: 2, h: 1 },
-            { id: "notifs",       x: 0, y: 2, w: 4, h: 2 },
-            { id: "profile",      x: 4, y: 2, w: 2, h: 1 },
+            { id: "conn",         x: 0, y: 0, w: 4, h: 1 },
+            { id: "layout",       x: 4, y: 0, w: 1, h: 1 },
+            { id: "nightlight",   x: 5, y: 0, w: 1, h: 1 },
+            { id: "battery",      x: 6, y: 0, w: 2, h: 1 },
+            { id: "media",        x: 0, y: 1, w: 4, h: 2 },
+            { id: "gaming",       x: 4, y: 1, w: 2, h: 1 },
+            { id: "go:power",     x: 6, y: 1, w: 1, h: 1 },
+            { id: "go:keys",      x: 7, y: 1, w: 1, h: 1 },
+            { id: "updates",      x: 4, y: 2, w: 2, h: 1 },
             { id: "mic",          x: 6, y: 2, w: 1, h: 2 },
             { id: "sound",        x: 7, y: 2, w: 1, h: 2 },
-            { id: "gamemode",     x: 4, y: 3, w: 2, h: 1 },
-            { id: "calendar",     x: 0, y: 4, w: 4, h: 3 },
-            { id: "notes",        x: 4, y: 4, w: 2, h: 1 },
-            { id: "updates",      x: 6, y: 4, w: 2, h: 1 },
-            { id: "system",       x: 4, y: 5, w: 2, h: 1 },
-            { id: "timer",        x: 4, y: 6, w: 2, h: 1 },
-            { id: "go:display",   x: 6, y: 6, w: 2, h: 1 },
-            { id: "weather",      x: 0, y: 7, w: 4, h: 1 },
-            { id: "go:clipboard", x: 4, y: 7, w: 1, h: 1 },
-            { id: "go:tray",      x: 5, y: 7, w: 1, h: 1 },
-            { id: "go:capture",   x: 6, y: 7, w: 1, h: 1 },
-            { id: "go:keys",      x: 7, y: 7, w: 1, h: 1 }
+            { id: "notifs",       x: 0, y: 3, w: 4, h: 2 },
+            { id: "notes",        x: 4, y: 3, w: 2, h: 1 },
+            { id: "timer",        x: 4, y: 4, w: 2, h: 1 },
+            { id: "go:clipboard", x: 6, y: 4, w: 2, h: 1 },
+            { id: "calendar",     x: 0, y: 5, w: 4, h: 2 },
+            { id: "weather",      x: 4, y: 5, w: 4, h: 2 }
         ];
     }
 
@@ -158,7 +154,16 @@ Item {
     // column count allows, and anything overlapping or out of bounds moved to
     // the first free slot. The saved file can therefore never draw a broken
     // grid, whatever wrote it.
+    // Controls that were merged or reworked: a saved layout or preset that
+    // still names one gets its successor in the same place (the first of a
+    // merged pair wins the spot; the second is dropped as a duplicate).
+    readonly property var retired: ({
+        "network": "conn", "bluetooth": "conn",
+        "gamemode": "gaming", "go:capture": "gaming",
+        "go:display": "nightlight"
+    })
     function sanitize(raw, cols) {
+        raw = raw.map(r => root.retired[r.id] ? Object.assign({}, r, { id: root.retired[r.id] }) : r);
         const occ = {};
         function fits(x, y, w, h) {
             if (x < 0 || y < 0 || x + w > cols) return false;
@@ -398,6 +403,10 @@ Item {
     // refreshes on a slow tick. The editor instance never polls.
     property int updates: IslandState.cacheGet("control.updates", -1)
     property string updatesTip: IslandState.cacheGet("control.updatesTip", "")
+    // When the unattended 12-hourly updater last ran, and whether the kernel
+    // it installed is still waiting for a reboot.
+    property string updatesLastRun: IslandState.cacheGet("control.updatesLastRun", "")
+    property bool updatesReboot: IslandState.cacheGet("control.updatesReboot", false)
     function reload() { if (!root.edit) updProc.running = true; }
     Process {
         id: updProc
@@ -406,6 +415,10 @@ Item {
             onStreamFinished: {
                 try {
                     const j = JSON.parse(this.text.trim());
+                    root.updatesLastRun = j.lastrun || "";
+                    root.updatesReboot = j.reboot === true;
+                    IslandState.cacheSet("control.updatesLastRun", root.updatesLastRun);
+                    IslandState.cacheSet("control.updatesReboot", root.updatesReboot);
                     if (j.class === "ok") { root.updates = 0; root.updatesTip = "up to date"; }
                     else {
                         const m = (j.text || "").match(/\d+/);
@@ -470,11 +483,24 @@ Item {
             return { glyph: "\u{f030c}",
                      label: IslandState.layoutCode !== "" ? IslandState.layoutCode : "Layout",
                      sub: IslandState.layoutName, on: false, tint: root.theme.accent3 };
+        case "nightlight":
+            return { glyph: IslandState.nightOn ? "\u{f0594}" : "\u{f0599}", label: "Night light", short: "Night",
+                     sub: IslandState.nightOn ? IslandState.nightTemp + " K" : "off",
+                     on: IslandState.nightOn, tint: root.theme.accent2 };
+        case "record":
+            return { glyph: "\u{f044a}", label: IslandState.obsRecording ? "Recording" : "Record",
+                     sub: IslandState.obsRecording ? IslandState.obsTimecode
+                        : IslandState.obsNeedsRestart ? "restart OBS"
+                        : IslandState.obsRunning ? "OBS ready" : "starts OBS",
+                     on: IslandState.obsRecording, tint: root.theme.error };
         case "updates":
-            return { glyph: "\u{f06b0}", label: "Updates",
-                     sub: root.updates < 0 ? "checking\u{2026}"
-                        : root.updates === 0 ? "up to date" : root.updates + " pending",
-                     on: root.updates > 0, tint: root.theme.accent2 };
+            return { glyph: root.updatesReboot ? "\u{f0709}" : "\u{f06b0}",
+                     label: root.updatesReboot ? "Reboot needed" : "Updates",
+                     sub: (root.updates < 0 ? "checking\u{2026}"
+                        : root.updates === 0 ? "up to date" : root.updates + " pending")
+                        + (root.updatesLastRun !== "" ? " \u{00b7} auto-ran " + root.updatesLastRun : ""),
+                     on: root.updates > 0 || root.updatesReboot,
+                     tint: root.updatesReboot ? root.theme.warn : root.theme.accent2 };
         case "profile":
             return { glyph: PowerProfiles.profile === PowerProfile.PowerSaver ? "\u{f06b1}" : "\u{f0241}",
                      label: "Profile",
@@ -486,10 +512,6 @@ Item {
         case "lock":
             return { glyph: "\u{f033e}", label: "Lock", sub: "session",
                      on: false, tint: root.theme.accent3 };
-        case "shape":
-            return { glyph: "\u{f0379}", label: IslandState.notch ? "Notch" : "Island",
-                     sub: "right-click: settings",
-                     on: IslandState.notch, tint: root.theme.accent };
         }
         return { glyph: "\u{f0128}", label: id, sub: "", on: false, tint: root.theme.accent };
     }
@@ -504,6 +526,14 @@ Item {
             return;
         case "gamemode": IslandState.cycleGameMode(); return;
         case "layout": IslandState.switchLayout(); return;
+        case "nightlight":
+            if (right) IslandState.openTool("display", IslandState.toolScreen);
+            else IslandState.toggleNight();
+            return;
+        case "record":
+            if (right) IslandState.openTool("capture", IslandState.toolScreen);
+            else IslandState.obsToggle();
+            return;
         case "updates":
             root.spawn(["ghostty", "-e", "bash", "-c",
                         "paru; echo; read -p 'done — press enter'"]);
@@ -520,10 +550,6 @@ Item {
         case "lock":
             IslandState.closeCard();
             IslandState.requestLock();
-            return;
-        case "shape":
-            if (right) { IslandState.closeCard(); IslandState.openSettings(); }
-            else IslandState.toggleMode();
             return;
         }
     }
@@ -763,6 +789,7 @@ Item {
                             case "notifs":  return cNotifs;
                             case "weather": return cWeather;
                             case "battery": return cBattery;
+                            case "pair":    return cPair;
                             case "launch":  return cLaunch;
                             }
                             return cToggle;
@@ -773,6 +800,36 @@ Item {
                     // The editor's hand: sits over the widget's own input, so
                     // in edit mode a control is a thing you move, not a thing
                     // that acts.
+                    // ── corner ✕: take the selected control off ───
+                    // On the control itself rather than a Remove chip under
+                    // the grid. Never on the last one: an emptied layout is
+                    // the reset sentinel (see removeSel).
+                    Rectangle {
+                        visible: root.edit && root.selId === slot.modelData.id && root.placed.length > 1
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: -7
+                        width: 22; height: 22; radius: 11
+                        z: 7
+                        color: rmHov.hovered ? root.theme.error : root.theme.error_container
+                        border.width: 2
+                        border.color: root.theme.surface_container
+                        Behavior on color { ColorAnimation { duration: 120 } }
+                        Text {
+                            anchors.centerIn: parent
+                            text: "\u{f0156}"
+                            color: rmHov.hovered ? root.theme.on_error : root.theme.on_error_container
+                            font.family: root.theme.fontMono
+                            font.pixelSize: 13
+                        }
+                        HoverHandler { id: rmHov; cursorShape: Qt.PointingHandCursor }
+                        MouseArea {
+                            anchors.fill: parent
+                            preventStealing: true
+                            onClicked: root.removeSel()
+                        }
+                    }
+
                     // ── corner grip: free-form resize ─────────────
                     // The chips stay as suggestions; this is "whatever I
                     // like" — pull the corner and the control takes any cell
@@ -905,6 +962,97 @@ Item {
         return Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2);
     }
 
+    // ── pair: two related toggles sharing one tile ────────────────
+    // Each half is the standalone toggle's control — same model, same click
+    // and right-click — so merging two switches loses neither. One row:
+    // circle and words side by side (words dropped when the half is narrow);
+    // two rows: circle above its words.
+    Component {
+        id: cPair
+        TileBase {
+            id: pRoot
+            readonly property int aw: wi ? wi.w : 2
+            readonly property int ah: wi ? wi.h : 1
+            readonly property var parts: wi && wi.def ? wi.def.parts : []
+            readonly property bool tall: ah >= 2
+            readonly property real halfW: (width - 12) / 2
+            Row {
+                anchors.fill: parent
+                anchors.margins: 4
+                spacing: 4
+                Repeater {
+                    model: pRoot.parts
+                    Rectangle {
+                        id: half
+                        required property string modelData
+                        readonly property var m: root.toggleModel(modelData)
+                        readonly property bool on: m !== null && m.on
+                        readonly property bool words: pRoot.tall || pRoot.halfW >= 84
+                        readonly property bool subLine: pRoot.tall || pRoot.halfW >= 130
+                        width: pRoot.halfW
+                        height: parent.height
+                        radius: 13
+                        color: hHov.hovered && !root.edit ? Qt.alpha(root.theme.fg, 0.08) : "transparent"
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Rectangle {
+                            id: dot
+                            width: Math.min(34, (pRoot.tall ? half.height * 0.45 : half.height - 14))
+                            height: width
+                            radius: width / 2
+                            x: pRoot.tall || !half.words ? (half.width - width) / 2 : 7
+                            y: pRoot.tall ? half.height * 0.14 : (half.height - height) / 2
+                            color: half.on ? half.m.tint : Qt.alpha(root.theme.fg, 0.10)
+                            Behavior on color { ColorAnimation { duration: 160 } }
+                            Text {
+                                anchors.centerIn: parent
+                                text: half.m ? half.m.glyph : ""
+                                color: half.on ? Qt.darker(half.m.tint, 3.4) : Qt.alpha(root.theme.fg, 0.85)
+                                font.family: root.theme.fontMono
+                                font.pixelSize: 15
+                            }
+                        }
+                        Column {
+                            visible: half.words
+                            spacing: 1
+                            x: pRoot.tall ? 6 : dot.x + dot.width + 8
+                            width: pRoot.tall ? half.width - 12 : half.width - x - 6
+                            anchors.verticalCenter: pRoot.tall ? undefined : parent.verticalCenter
+                            y: pRoot.tall ? dot.y + dot.height + 6 : 0
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: pRoot.tall ? Text.AlignHCenter : Text.AlignLeft
+                                elide: Text.ElideRight
+                                text: half.m ? half.m.label : ""
+                                color: root.theme.fg
+                                font.family: root.theme.fontSans
+                                font.pixelSize: IslandState.ts(11)
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                visible: half.subLine
+                                width: parent.width
+                                horizontalAlignment: pRoot.tall ? Text.AlignHCenter : Text.AlignLeft
+                                elide: Text.ElideRight
+                                text: half.m ? half.m.sub : ""
+                                color: Qt.alpha(root.theme.on_surface_variant, 0.7)
+                                font.family: root.theme.fontSans
+                                font.pixelSize: IslandState.ts(9)
+                            }
+                        }
+                        HoverHandler { id: hHov; enabled: !root.edit; cursorShape: Qt.PointingHandCursor }
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: !root.edit
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onClicked: (e) => root.toggleAction(half.modelData, e.button === Qt.RightButton)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // ── small toggle: circle, pill, or big tile ───────────────────
     Component {
         id: cToggle
@@ -953,7 +1101,8 @@ Item {
                     width: tRoot.width - 6
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideMiddle
-                    text: tRoot.m ? tRoot.m.label : ""
+                    // the circle face is the small one: a short name if the control has one
+                    text: tRoot.m ? (tRoot.m.short || tRoot.m.label) : ""
                     color: Qt.alpha(root.theme.fg, 0.85)
                     font.family: root.theme.fontSans
                     font.pixelSize: IslandState.ts(9)
@@ -2601,134 +2750,109 @@ Item {
         }
     }
 
-    // ── mouse battery tile ────────────────────────────────────────
+    // ── devices tile ──────────────────────────────────────────────
+    // Every battery-powered device that is connected, from
+    // IslandState.devices (the menu bar's Devices item reads the same list),
+    // each as a ring around its icon with the charge under it. A click on a
+    // device opens its own panel, or Batteries where it has none; a click on
+    // the empty tile opens Batteries.
     Component {
         id: cBattery
         TileBase {
-            id: bTile
-            readonly property int aw: wi ? wi.w : 1
+            id: dTile
+            readonly property int aw: wi ? wi.w : 2
             readonly property int ah: wi ? wi.h : 1
-            readonly property bool horiz: aw > ah
-            color: batHov.hovered && !root.edit ? Qt.alpha(root.theme.fg, 0.12)
-                                                : Qt.alpha(root.theme.fg, 0.07)
-            Behavior on color { ColorAnimation { duration: 130 } }
+            readonly property var list: IslandState.devices
+            color: Qt.alpha(root.theme.fg, 0.07)
+            clip: true
 
-            readonly property real pct: root.batDev ? root.batDev.percentage : -1
-            readonly property bool charging:
-                root.batDev !== null && root.batDev.state === UPowerDeviceState.Charging
-
-            component BatRing: Item {
-                property real size: 47
-                width: size
-                height: size
-
-                RingProgress {
-                    anchors.fill: parent
-                    symmetric: true
-                    progress: Math.max(0, bTile.pct)
-                    ring: bTile.charging ? root.theme.success
-                        : bTile.pct < 0 ? root.theme.muted
-                        : bTile.pct <= 0.2 ? root.theme.warn : root.theme.accent
-                    track: root.theme.fg
-                    trackAlpha: 0.10
-                    thickness: 2.5
-                }
-                Text {
-                    anchors.centerIn: parent
-                    text: bTile.pct >= 0 ? Math.round(bTile.pct * 100) : "\u{2014}"
-                    color: root.theme.fg
-                    font.family: root.theme.fontMono
-                    font.pixelSize: 12
-                    font.weight: Font.Bold
-                }
+            // One ring size for the whole tile: as large as the box allows
+            // while every device still fits on its rows.
+            readonly property real ringSize: {
+                const n = Math.max(1, list.length);
+                const rows = Math.max(1, Math.min(n, Math.floor((height - 8) / 58)));
+                const perRow = Math.ceil(n / rows);
+                const byW = (width - 16) / perRow - 10;
+                const byH = (height - 12) / rows - 22;
+                return Math.max(22, Math.min(44, byW, byH));
             }
 
-            // ── wide face: the ring beside its words ──────────
-            Row {
-                visible: bTile.horiz
+            Text {
+                visible: dTile.list.length === 0
                 anchors.centerIn: parent
-                spacing: 12
-
-                BatRing {
-                    anchors.verticalCenter: parent.verticalCenter
-                    size: Math.min(bTile.height - 26, 64)
-                }
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 1
-                    Text {
-                        text: "Mouse"
-                        color: root.theme.fg
-                        font.family: root.theme.fontSans
-                        font.pixelSize: IslandState.ts(11)
-                        font.weight: Font.DemiBold
-                    }
-                    Text {
-                        text: root.batDev === null ? "not seen"
-                            : bTile.charging ? "charging" : "discharging"
-                        color: bTile.charging ? root.theme.success
-                                              : Qt.alpha(root.theme.on_surface_variant, 0.75)
-                        font.family: root.theme.fontSans
-                        font.pixelSize: IslandState.ts(9)
-                    }
-                    Text {
-                        visible: bTile.aw >= 3 && root.batDev !== null
-                        width: bTile.width - bTile.height - 30
-                        elide: Text.ElideRight
-                        text: root.batDev ? (root.batDev.model || "") : ""
-                        color: Qt.alpha(root.theme.on_surface_variant, 0.55)
-                        font.family: root.theme.fontSans
-                        font.pixelSize: IslandState.ts(8)
-                    }
-                }
+                text: "\u{f184f}  no devices"
+                color: Qt.alpha(root.theme.on_surface_variant, 0.6)
+                font.family: root.theme.fontSans
+                font.pixelSize: IslandState.ts(10)
             }
-
-            // ── stacked face: 1x1, square, portrait ───────────
-            Column {
-                visible: !bTile.horiz
-                anchors.centerIn: parent
-                spacing: 4
-
-                BatRing {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    // taller boxes spend their extra height on the words
-                    // below, so the ring only grows where it genuinely fits
-                    size: Math.min(Math.min(bTile.width, bTile.height)
-                                   - 26 - (bTile.ah >= 2 ? 24 : 0), 84)
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "mouse"
-                    color: Qt.alpha(root.theme.on_surface_variant, 0.8)
-                    font.family: root.theme.fontSans
-                    font.pixelSize: IslandState.ts(8)
-                }
-                Text {
-                    visible: bTile.ah >= 2 && root.batDev !== null
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: bTile.charging ? "charging" : "discharging"
-                    color: bTile.charging ? root.theme.success : Qt.alpha(root.theme.on_surface_variant, 0.65)
-                    font.family: root.theme.fontSans
-                    font.pixelSize: IslandState.ts(9)
-                }
-                Text {
-                    visible: bTile.aw >= 2 && bTile.ah >= 2 && root.batDev !== null
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: bTile.width - 14
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideMiddle
-                    text: root.batDev ? (root.batDev.model || "") : ""
-                    color: Qt.alpha(root.theme.on_surface_variant, 0.55)
-                    font.family: root.theme.fontSans
-                    font.pixelSize: IslandState.ts(8)
-                }
-            }
-
-            HoverHandler { id: batHov; enabled: !root.edit; cursorShape: Qt.PointingHandCursor }
             MouseArea {
                 anchors.fill: parent
                 enabled: !root.edit
+                cursorShape: Qt.PointingHandCursor
                 onClicked: IslandState.openTool("battery", IslandState.toolScreen)
+            }
+
+            Flow {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 12, implicitW)
+                readonly property real implicitW: dTile.list.length * (dTile.ringSize + 10 + spacing)
+                spacing: 4
+                Repeater {
+                    model: dTile.list
+                    Item {
+                        id: dev
+                        required property var modelData
+                        readonly property color tint: IslandState.batteryColor(modelData.pct, modelData.charging, root.theme)
+                        width: dTile.ringSize + 10
+                        height: dTile.ringSize + 20
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 12
+                            color: Qt.alpha(root.theme.fg, devHov.hovered && !root.edit ? 0.08 : 0)
+                            Behavior on color { ColorAnimation { duration: 120 } }
+                        }
+                        Item {
+                            id: ring
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            y: 3
+                            width: dTile.ringSize
+                            height: width
+                            RingProgress {
+                                anchors.fill: parent
+                                symmetric: true
+                                progress: Math.max(0, dev.modelData.pct)
+                                ring: dev.tint
+                                track: root.theme.fg
+                                trackAlpha: 0.10
+                                thickness: 2.5
+                            }
+                            DeviceGlyph {
+                                anchors.centerIn: parent
+                                kind: dev.modelData.kind
+                                color: dev.modelData.body !== "" ? dev.modelData.body : Qt.alpha(root.theme.fg, 0.9)
+                                fontFamily: root.theme.fontMono
+                                size: parent.width * 0.5
+                            }
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: ring.bottom
+                            anchors.topMargin: 2
+                            text: dev.modelData.pct < 0 ? "\u{2014}" : Math.round(dev.modelData.pct * 100) + "%"
+                            color: dev.modelData.charging || (dev.modelData.pct >= 0
+                                   && dev.modelData.pct <= IslandState.cfg.statusWarnPct / 100) ? dev.tint : root.theme.fg
+                            font.family: root.theme.fontMono
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                        }
+                        HoverHandler { id: devHov; enabled: !root.edit; cursorShape: Qt.PointingHandCursor }
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: !root.edit
+                            onClicked: IslandState.openTool(dev.modelData.tool, IslandState.toolScreen)
+                        }
+                    }
+                }
             }
         }
     }

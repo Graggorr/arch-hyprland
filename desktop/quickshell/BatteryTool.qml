@@ -57,6 +57,86 @@ Item {
         spacing: 8
 
 
+        // The Oukitel power station, read like every other device: the
+        // shared DeviceGlyph and batteryColor, its status from the daemon.
+        // Click opens its own panel.
+        Rectangle {
+            id: stRow
+            visible: IslandState.stationKnown
+            width: parent.width
+            height: 50
+            radius: 12
+            color: Qt.alpha(root.theme.fg, stHov.hovered ? 0.09 : 0.05)
+            readonly property real pct: IslandState.stationFrac
+            readonly property color tint: IslandState.batteryColor(pct, false, root.theme)
+
+            Row {
+                anchors.left: parent.left
+                anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 9
+                DeviceGlyph {
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "station"
+                    color: stRow.tint
+                    fontFamily: root.theme.fontMono
+                    size: 18
+                }
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+                    Text {
+                        width: 220
+                        elide: Text.ElideRight
+                        text: "Power station"
+                        color: root.theme.fg
+                        font.family: root.theme.fontSans
+                        font.pixelSize: IslandState.ts(12)
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        width: 220
+                        elide: Text.ElideRight
+                        text: IslandState.stationStatus
+                        color: Qt.alpha(root.theme.muted, 0.85)
+                        font.family: root.theme.fontSans
+                        font.pixelSize: IslandState.ts(9)
+                    }
+                }
+            }
+            Row {
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 8
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 54; height: 5; radius: 2.5
+                    color: Qt.alpha(root.theme.fg, 0.10)
+                    Rectangle {
+                        anchors.left: parent.left
+                        height: parent.height
+                        radius: parent.radius
+                        width: parent.width * Math.max(0, Math.min(1, stRow.pct))
+                        color: stRow.tint
+                    }
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: stRow.pct >= 0 ? Math.round(stRow.pct * 100) + "%" : "—"
+                    color: root.theme.fg
+                    font.family: root.theme.fontMono
+                    font.pixelSize: 12
+                    font.weight: Font.Bold
+                }
+            }
+            HoverHandler { id: stHov; cursorShape: Qt.PointingHandCursor }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: IslandState.openTool("station", IslandState.toolScreen)
+            }
+        }
+
         // The system battery comes straight from UPower rather than the
         // script, so it carries time-to-empty. Absent on this desktop —
         // see Platform for why the gate is the battery, not the chassis.
@@ -121,6 +201,7 @@ Item {
 
         Text {
             visible: root.devices.length === 0 && !Platform.hasSystemBattery
+                     && !IslandState.stationKnown
             text: "No batteries visible"
             color: Qt.alpha(root.theme.muted, 0.7)
             font.family: root.theme.fontSans

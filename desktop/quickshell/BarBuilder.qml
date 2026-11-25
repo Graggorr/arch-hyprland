@@ -57,6 +57,11 @@ Item {
         const tr = tray.mapToItem(root, 0, 0);
         if (cy >= st.y && cy <= st.y + stage.height) {
             root.dropZone = "bar";
+            // Carried to an edge of a bar that overflows: scroll it along.
+            const fx = cx - pillFlick.mapToItem(root, 0, 0).x;
+            const maxX = Math.max(0, pillFlick.contentWidth - pillFlick.width);
+            if (fx < 36) pillFlick.contentX = Math.max(0, pillFlick.contentX - 10);
+            else if (fx > pillFlick.width - 36) pillFlick.contentX = Math.min(maxX, pillFlick.contentX + 10);
             // Count the pieces (not the carried one) whose centre is left of
             // the pointer: that is the slot it would take.
             let idx = 0;
@@ -181,14 +186,47 @@ Item {
                 border.color: Qt.alpha(root.theme.outline, 0.35)
                 Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-                // Item chips shrink to fit: with every item on the bar the row
-                // is wider than the settings window, and the last ones were
-                // cut off. The island keeps at least 64 px and takes the rest,
+                // Item chips keep one readable size; when they do not all fit
+                // the bar scrolls sideways (wheel, drag on empty space, or the
+                // carried chip nearing an edge) instead of shrinking them —
+                // shrinking to fit made every chip tiny once the bar had
+                // twenty-odd items. The island takes whatever room is left,
                 // which pushes the right side to the bar's right end.
                 readonly property int sideCount: Math.max(1, root.order.length - 1)
-                readonly property real pieceW: Math.max(18, Math.min(32,
-                    (width - 12 - 64 - root.order.length * pillRow.spacing) / sideCount))
+                readonly property real pieceW: 32
                 readonly property real sidesW: sideCount * (pieceW + pillRow.spacing)
+                // Too many items for the bar: the arrows take a lane of their
+                // own at each end and the chips scroll between them, so an
+                // arrow never sits on top of a chip.
+                readonly property real arrowLane: 30
+                readonly property bool overflow: sidesW + 80 + 12 > width
+                Flickable {
+                    id: pillFlick
+                    anchors.fill: parent
+                    anchors.leftMargin: pillBody.overflow ? pillBody.arrowLane : 0
+                    anchors.rightMargin: pillBody.overflow ? pillBody.arrowLane : 0
+                    contentWidth: pillRow.width + 12
+                    contentHeight: height
+                    flickableDirection: Flickable.HorizontalFlick
+                    boundsBehavior: Flickable.StopAtBounds
+                    interactive: contentWidth > width + 1
+                    clip: true
+                    readonly property real maxX: Math.max(0, contentWidth - width)
+                    readonly property bool canLeft: interactive && contentX > 1
+                    readonly property bool canRight: interactive && contentX < maxX - 1
+                    function scrollBy(dx, animate) {
+                        const to = Math.max(0, Math.min(maxX, (scrollAnim.running ? scrollAnim.to : contentX) + dx));
+                        if (!animate) { scrollAnim.stop(); contentX = to; return; }
+                        scrollAnim.to = to;
+                        scrollAnim.restart();
+                    }
+                    NumberAnimation {
+                        id: scrollAnim
+                        target: pillFlick
+                        property: "contentX"
+                        duration: 240
+                        easing.type: Easing.OutCubic
+                    }
                 Row {
                     id: pillRow
                     x: 6
@@ -210,7 +248,7 @@ Item {
                             readonly property bool sel: root.selId === pid
                             readonly property bool carried: root.dragId === pid
 
-                            width: isNotch ? Math.max(64, pillBody.width - 12 - pillBody.sidesW) : pillBody.pieceW
+                            width: isNotch ? (pillBody.overflow ? 80 : pillBody.width - 12 - pillBody.sidesW) : pillBody.pieceW
                             height: isNotch ? 34 : 30
                             radius: isNotch ? 12 : 9
                             opacity: carried ? 0.25 : 1
@@ -287,6 +325,53 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 3; height: 30; radius: 1.5
                     color: root.theme.accent
+                }
+                }
+
+                // The wheel anywhere over the bar scrolls it, chips included
+                // (a vertical wheel scrolls sideways; a tilt wheel too).
+                WheelHandler {
+                    target: null
+                    enabled: pillFlick.interactive
+                    onWheel: (e) => {
+                        const d = Math.abs(e.angleDelta.x) > Math.abs(e.angleDelta.y) ? e.angleDelta.x : e.angleDelta.y;
+                        pillFlick.scrollBy(-d * 0.6, false);
+                        e.accepted = true;
+                    }
+                }
+
+                // Arrows in their own lanes at the ends, there only while the
+                // bar overflows; dimmed at the end it cannot scroll past.
+                // A click moves the bar by most of its width.
+                Repeater {
+                    model: pillBody.overflow ? [ { dir: -1, glyph: "\u{f0141}" }, { dir: 1, glyph: "\u{f0142}" } ] : []
+                    Rectangle {
+                        id: arrow
+                        required property var modelData
+                        readonly property bool isLeft: !modelData || modelData.dir < 0
+                        readonly property bool can: isLeft ? pillFlick.canLeft : pillFlick.canRight
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: isLeft ? 4 : parent.width - width - 4
+                        width: pillBody.arrowLane - 6
+                        height: 30
+                        radius: 9
+                        opacity: can ? 1 : 0.35
+                        color: can && arrowHov.hovered ? root.theme.secondary_container : Qt.alpha(root.theme.on_surface, 0.08)
+                        Behavior on color { ColorAnimation { duration: 120 } }
+                        Behavior on opacity { NumberAnimation { duration: 140 } }
+                        Text {
+                            anchors.centerIn: parent
+                            text: arrow.modelData ? arrow.modelData.glyph : ""
+                            color: arrow.can && arrowHov.hovered ? root.theme.on_secondary_container : root.theme.on_surface
+                            font.family: root.theme.fontMono
+                            font.pixelSize: 16
+                        }
+                        HoverHandler { id: arrowHov; cursorShape: arrow.can ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                        TapHandler {
+                            enabled: arrow.can
+                            onTapped: pillFlick.scrollBy(arrow.modelData.dir * pillFlick.width * 0.7, true)
+                        }
+                    }
                 }
             }
 

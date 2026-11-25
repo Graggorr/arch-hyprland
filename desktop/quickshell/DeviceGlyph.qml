@@ -6,7 +6,7 @@ import "DeviceIcons.js" as DeviceIcons
 // item, the Batteries panel and the Bluetooth radar. The icons live in
 // DeviceIcons.js, each from an open icon set; this only paints one in a colour.
 //   kind: airpods · iphone · phone · headphones · audio · mouse · keyboard ·
-//         dualsense · dualshock · xbox · switch · gamepad
+//         dualsense · dualshock · xbox · switch · gamepad · station
 // A kind the set has no drawing for falls back to Material's gamepad glyph.
 Item {
     id: root

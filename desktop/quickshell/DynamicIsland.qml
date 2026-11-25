@@ -120,7 +120,7 @@ Item {
     // box is the pill plus the wider side twice over, so the circles grow
     // outward from the pill's edges instead of shoving it off-centre. The
     // card centres on this box too, which keeps it under the pill.
-    readonly property real leftW: padsSlot.width + phoneSlot.width + airpodsSlot.width + artSlot.width
+    readonly property real leftW: stationSlot.width + mouseSlot.width + padsSlot.width + phoneSlot.width + airpodsSlot.width + artSlot.width
     readonly property real rightW: statusSlot.width
                                    + (trailCap.visible ? trailCap.width + 8 : 0)
     implicitWidth: pill.width + 2 * Math.max(leftW, rightW)
@@ -237,6 +237,67 @@ Item {
                     expanded: root.expanded
                 }
             }
+        }
+    }
+
+    // ── mouse circle ──────────────────────────────────────────────
+    // While the mouse reports a charge, never with its pref off, and not
+    // while the status circle is up: that ring already is the mouse.
+    Item {
+        id: mouseSlot
+        anchors.right: padsSlot.left
+        anchors.verticalCenter: pill.verticalCenter
+        readonly property bool show: IslandState.cfg.mouseCircle && mouseDevCircle.connected
+            && !IslandState.cfg.menuBar && !IslandState.cfg.statusCircle
+        readonly property real fullW: (root.expanded ? 34 : 30) + 8
+        width: show ? fullW : 0
+        height: mouseDevCircle.implicitHeight
+        clip: width < fullW - 0.5
+        visible: width > 0.5
+        opacity: show ? 1 : 0
+        Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+        DeviceCircle {
+            id: mouseDevCircle
+            kind: "mouse"
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: implicitWidth
+            height: implicitHeight
+            theme: root.theme
+            screenName: root.screenName
+            expanded: root.expanded
+        }
+    }
+
+    // ── power station circle, outermost left ──────────────────────
+    // While the oukitel daemon reaches the station, and never with its pref
+    // off. In the menu bar it joins the Devices item instead.
+    Item {
+        id: stationSlot
+        anchors.right: mouseSlot.left
+        anchors.verticalCenter: pill.verticalCenter
+        readonly property bool show: IslandState.cfg.stationCircle && stationDev.connected && !IslandState.cfg.menuBar
+        readonly property real fullW: (root.expanded ? 34 : 30) + 8
+        width: show ? fullW : 0
+        height: stationDev.implicitHeight
+        clip: width < fullW - 0.5
+        visible: width > 0.5
+        opacity: show ? 1 : 0
+        Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+        DeviceCircle {
+            id: stationDev
+            kind: "station"
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: implicitWidth
+            height: implicitHeight
+            theme: root.theme
+            screenName: root.screenName
+            expanded: root.expanded
         }
     }
 

@@ -12,7 +12,10 @@ Item {
 
     readonly property real preferredHeight: 360
 
-    readonly property bool showing: IslandState.tool === "monitor"
+    // Settings → Monitoring shows this panel too; it sets `live` so the
+    // readings run there as well.
+    property bool live: false
+    readonly property bool showing: IslandState.tool === "monitor" || root.live
     readonly property string wb: "@HOME@/.config/quickshell/scripts/"
 
     // Which tile the detail panel is describing. Sticky on the last hover
