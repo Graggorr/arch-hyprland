@@ -3,17 +3,31 @@ import { writeFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 const PORT = process.env.DISCORD_CDP_PORT ?? "9285";
-const STREAM_OUTPUT = process.env.DISCORD_STREAM_OUTPUT ?? leftmostMonitor();
+const GAME_CLASS = /^(steam_app_\d+|gamescope|.*\.exe)$/i;
+
+function hyprJson(what) {
+    const r = spawnSync("hyprctl", [what, "-j"], { encoding: "utf8" });
+    try { return JSON.parse(r.stdout); } catch { return []; }
+}
 
 function leftmostMonitor() {
-    const r = spawnSync("hyprctl", ["monitors", "-j"], { encoding: "utf8" });
-    try {
-        const mons = JSON.parse(r.stdout).filter(m => !m.disabled);
-        mons.sort((a, b) => a.x - b.x || a.y - b.y);
-        return mons[0]?.name ?? "";
-    } catch {
-        return "";
-    }
+    const mons = hyprJson("monitors").filter(m => !m.disabled);
+    mons.sort((a, b) => a.x - b.x || a.y - b.y);
+    return mons[0];
+}
+
+function gameWindow(monitor) {
+    const clients = hyprJson("clients").filter(c => c.mapped && !c.hidden);
+    return clients.find(c => GAME_CLASS.test(c.class))
+        ?? clients.find(c => monitor && c.monitor === monitor.id && c.fullscreen > 0 && c.class !== "discord");
+}
+
+function streamTarget() {
+    if (process.env.DISCORD_STREAM_OUTPUT) return `screen:${process.env.DISCORD_STREAM_OUTPUT}`;
+    const mon = leftmostMonitor();
+    const game = gameWindow(mon);
+    if (game) return `window:${game.address}`;
+    return mon ? `screen:${mon.name}` : "";
 }
 const CONNECT_MS = 2000;
 const REPLY_MS = 20000;
@@ -114,17 +128,21 @@ const actions = {
     deafen: () => toggleSwitch("deafen", "deafened", "undeafened"),
 
     async stream() {
-        writeFileSync(PICKER_FLAG, STREAM_OUTPUT);
+        writeFileSync(PICKER_FLAG, streamTarget());
         return evaluate(new Function("arg", `return (async () => { ${pageHelpers}
             const stop = document.querySelector('[aria-label="Stop Streaming"]');
             if (stop) { stop.click(); return "stopped"; }
-            const share = await voicePanelButton("^share your screen$");
-            if (!share) return "not in a voice channel";
-            share.click();
+            const menuItem = () => document.querySelector("#manage-streams-share-your-screen");
+            if (!menuItem()) {
+                const share = await voicePanelButton("^share your screen$");
+                if (!share) return "not in a voice channel";
+                share.click();
+            }
             const dialog = await (async () => {
                 for (let i = 0; i < 40; i++, await sleep(100)) {
                     const d = document.querySelector('[role="dialog"]');
                     if (d) return d;
+                    menuItem()?.click();
                 }
                 return null;
             })();

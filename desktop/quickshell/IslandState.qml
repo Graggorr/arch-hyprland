@@ -3034,10 +3034,13 @@ Singleton {
         repeat: true
         onTriggered: { root.stationNow = Date.now(); stationFile.reload(); }
     }
-    // A dead daemon leaves its last file behind, so a reading older than two
-    // minutes counts as offline rather than as the station's current state.
-    readonly property bool stationOnline: root.stationKnown && root.station.connected === true
-        && (root.stationNow / 1000 - (root.station.updated || 0)) < 120
+    // The station's Wi-Fi drops for 2–5 minutes every few hours, so the last
+    // reading stays on screen for five minutes while the daemon reconnects;
+    // older than that counts as offline, as does a dead daemon's leftover file.
+    readonly property real stationAge: root.stationNow / 1000 - (root.station.updated || 0)
+    readonly property bool stationOnline: root.stationKnown && root.station.updated !== undefined
+        && root.stationAge < 300
+    readonly property bool stationReconnecting: root.stationOnline && root.station.connected !== true
     readonly property int stationPct: root.station.battery !== undefined ? Math.round(root.station.battery) : -1
     // The 0–1 charge every other device carries, -1 while unreachable.
     readonly property real stationFrac: root.stationOnline && root.stationPct >= 0 ? root.stationPct / 100 : -1
@@ -3083,6 +3086,7 @@ Singleton {
     readonly property string stationStatus: {
         if (!root.stationKnown) return "";
         if (!root.stationOnline) return root.station.error ? "Offline · " + root.station.error : "Offline";
+        if (root.stationReconnecting) return "Reconnecting · last reading " + Math.round(root.stationAge / 60) + " min ago";
         const rt = root.stationRuntime;
         if (root.stationHolding)
             return "Held at the " + root.station.charge_target + "% limit" + (rt ? " · backup " + rt : "");

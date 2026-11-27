@@ -181,7 +181,7 @@ return function(ctx)
         { "Discord", {
             { id = "discord.mute",     keys = "ALT + apostrophe",      label = "Mute (microphone mute when Discord is closed)", action = exec(scripts .. "/discord-mic.sh") },
             { id = "discord.deafen",   keys = "ALT + I",               label = "Deafen",                                        action = exec(scripts .. "/discord-deafen.sh") },
-            { id = "discord.stream",   keys = "ALT + P",               label = "Go Live: stream the leftmost monitor",          action = exec(bin .. "/discord-cdp stream") },
+            { id = "discord.stream",   keys = "ALT + P",               label = "Go Live: stream the running game (else the leftmost monitor)",          action = exec(bin .. "/discord-cdp stream") },
         }},
     }
 
